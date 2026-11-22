@@ -14,9 +14,25 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
     })
   : null;
 
+export type SocialPresetKey =
+  | 'github'
+  | 'youtube'
+  | 'discord'
+  | 'x'
+  | 'instagram'
+  | 'tiktok'
+  | 'twitch'
+  | 'spotify'
+  | 'steam'
+  | 'linkedin'
+  | 'globe'
+  | 'custom';
+
 export interface ProfileLinkItem {
   label: string;
   url: string;
+  preset?: SocialPresetKey;
+  customIconUrl?: string;
 }
 
 export interface ProfileRecord {
@@ -290,7 +306,7 @@ export async function updateProfileRecord(
 export async function uploadProfileMedia(
   profileId: string,
   file: File,
-  folder: 'backgrounds' | 'audio' | 'covers' = 'backgrounds',
+  folder: 'backgrounds' | 'audio' | 'covers' | 'icons' = 'backgrounds',
 ): Promise<{url: string | null; error?: string}> {
   if (!supabase) {
     return {

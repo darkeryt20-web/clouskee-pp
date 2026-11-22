@@ -29,6 +29,7 @@ import {useAuth} from '../context/AuthContext';
 import {
   ProfileLinkItem,
   ProfileRecord,
+  SocialPresetKey,
   uploadProfileMedia,
 } from '../lib/supabase';
 import {sanitizeExternalUrl} from '../lib/domain';
@@ -39,6 +40,12 @@ import {
   sanitizeFontFamily,
   sanitizeHexColor,
 } from '../components/ProfileView';
+import {
+  getPresetMeta,
+  inferPresetFromLink,
+  SOCIAL_PRESETS,
+  SocialPresetIcon,
+} from '../components/SocialPresetIcons';
 import {
   checkUsernameAvailability,
   sanitizeHandle,
@@ -137,6 +144,9 @@ export function DashboardPage() {
   const [uploadingField, setUploadingField] = useState<
     'bg' | 'audio' | 'cover' | 'avatar' | null
   >(null);
+  const [uploadingLinkIconIdx, setUploadingLinkIconIdx] = useState<
+    number | null
+  >(null);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -177,7 +187,12 @@ export function DashboardPage() {
     setMusicAutoplay(Boolean(activeProfile.music_autoplay));
 
     setLinks(
-      Array.isArray(activeProfile.links) ? [...activeProfile.links] : [],
+      Array.isArray(activeProfile.links)
+        ? activeProfile.links.map((item) => ({
+            ...item,
+            preset: inferPresetFromLink(item),
+          }))
+        : [],
     );
   }, [activeProfile]);
 
@@ -381,6 +396,41 @@ export function DashboardPage() {
     }
   };
 
+  const handleUploadLinkIcon = async (
+    e: ChangeEvent<HTMLInputElement>,
+    idx: number,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setErrorMessage('');
+    setSaveMessage('');
+    setUploadingLinkIconIdx(idx);
+    try {
+      const {url, error} = await uploadProfileMedia(
+        activeProfile.id,
+        file,
+        'icons',
+      );
+      if (error || !url) {
+        setErrorMessage(
+          error ||
+            'Upload failed. Ensure Supabase Storage bucket "profile-media" exists or paste a direct image URL.',
+        );
+        return;
+      }
+      setLinks((prev) =>
+        prev.map((l, i) =>
+          i === idx ? {...l, preset: 'custom', customIconUrl: url} : l,
+        ),
+      );
+      setSaveMessage('Custom logo uploaded. Click Save Changes to publish.');
+    } finally {
+      setUploadingLinkIconIdx(null);
+    }
+  };
+
   const handleMoveLink = (idx: number, direction: -1 | 1) => {
     const nextIdx = idx + direction;
     if (nextIdx < 0 || nextIdx >= links.length) return;
@@ -449,17 +499,37 @@ export function DashboardPage() {
 
     const sanitizedLinks: ProfileLinkItem[] = [];
     for (const item of links) {
+      const preset = inferPresetFromLink(item);
+      const presetMeta = getPresetMeta(preset);
       const label = item.label.trim();
       const url = item.url.trim();
-      if (!label && !url) continue;
+      if (!label && !url && !item.customIconUrl?.trim()) continue;
       const safeUrl = sanitizeExternalUrl(url);
       if (!safeUrl) {
         setErrorMessage(
-          `Link "${label || url}" must start with https:// or http://.`,
+          `Link "${label || presetMeta.label || url}" must start with https:// or http://.`,
         );
         return;
       }
-      sanitizedLinks.push({label: label || safeUrl, url: safeUrl});
+
+      let safeCustomIconUrl: string | undefined;
+      if (preset === 'custom' && item.customIconUrl?.trim()) {
+        const checkedIcon = sanitizeExternalUrl(item.customIconUrl);
+        if (!checkedIcon) {
+          setErrorMessage(
+            `Custom logo URL for "${label || safeUrl}" must start with https:// or http://.`,
+          );
+          return;
+        }
+        safeCustomIconUrl = checkedIcon;
+      }
+
+      sanitizedLinks.push({
+        label: label || presetMeta.label,
+        url: safeUrl,
+        preset,
+        ...(safeCustomIconUrl ? {customIconUrl: safeCustomIconUrl} : {}),
+      });
     }
 
     const cleanedTypewriterLines = typewriterTexts
@@ -908,6 +978,11 @@ export function DashboardPage() {
                           />
                         </label>
                       </div>
+                      {bgType === 'video' && (
+                        <p className="text-[11px] text-slate-400">
+                          Background videos are always muted by default for visitors.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -1175,18 +1250,21 @@ export function DashboardPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="text-sm font-bold text-white">
-                        Social &amp; Custom Links
+                        Socials &amp; Icon Links
                       </h2>
                       <p className="text-xs text-slate-400">
-                        Add, reorder, or remove links shown on your profile card.
+                        Displayed as a clean icon-only row on your profile. Choose a built-in logo preset or upload your own.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() =>
-                        setLinks((prev) => [...prev, {label: '', url: ''}])
+                        setLinks((prev) => [
+                          ...prev,
+                          {label: 'GitHub', url: '', preset: 'github'},
+                        ])
                       }
-                      className="inline-flex items-center gap-1 rounded-xl bg-purple-950/60 border border-purple-500/30 px-3.5 py-2 text-xs font-semibold text-purple-200 hover:text-white cursor-pointer"
+                      className="inline-flex items-center gap-1 rounded-xl bg-purple-950/60 border border-purple-500/30 px-3.5 py-2 text-xs font-semibold text-purple-200 hover:text-white shrink-0 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add Link</span>
@@ -1196,75 +1274,181 @@ export function DashboardPage() {
                   {links.length === 0 ? (
                     <div className="rounded-xl bg-[#07030d]/70 border border-purple-500/15 px-4 py-6 text-center text-xs text-slate-400">
                       No links added yet. Click &quot;Add Link&quot; above to
-                      attach GitHub, Discord, X, or download links.
+                      attach GitHub, YouTube, Discord, X, or custom logo links.
                     </div>
                   ) : (
-                    <div className="space-y-2.5">
-                      {links.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
-                        >
-                          <input
-                            type="text"
-                            value={item.label}
-                            onChange={(e) =>
-                              setLinks((prev) =>
-                                prev.map((l, i) =>
-                                  i === idx ? {...l, label: e.target.value} : l,
-                                ),
-                              )
-                            }
-                            placeholder="Label (e.g. GitHub)"
-                            className="sm:w-1/3 rounded-lg bg-[#0b0615] border border-purple-500/20 px-3 py-2 text-xs sm:text-sm text-white focus:outline-none"
-                          />
-                          <input
-                            type="url"
-                            value={item.url}
-                            onChange={(e) =>
-                              setLinks((prev) =>
-                                prev.map((l, i) =>
-                                  i === idx ? {...l, url: e.target.value} : l,
-                                ),
-                              )
-                            }
-                            placeholder="https://..."
-                            className="flex-1 rounded-lg bg-[#0b0615] border border-purple-500/20 px-3 py-2 text-xs sm:text-sm text-white focus:outline-none"
-                          />
-                          <div className="flex items-center justify-end gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              disabled={idx === 0}
-                              onClick={() => handleMoveLink(idx, -1)}
-                              aria-label="Move link up"
-                              className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-300 hover:text-white disabled:opacity-35 cursor-pointer"
+                    <div className="space-y-3">
+                      {links.map((item, idx) => {
+                        const activePreset = inferPresetFromLink(item);
+                        const presetMeta = getPresetMeta(activePreset);
+                        return (
+                          <div
+                            key={idx}
+                            className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-3.5 space-y-3"
+                          >
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                              {/* Preset Icon Preview + Selector */}
+                              <div className="flex items-center gap-2 sm:w-44 shrink-0">
+                                <div className="w-9 h-9 rounded-lg bg-[#0b0615] border border-purple-500/25 flex items-center justify-center text-white shrink-0">
+                                  <SocialPresetIcon
+                                    preset={activePreset}
+                                    customIconUrl={item.customIconUrl}
+                                    label={item.label || presetMeta.label}
+                                    className="w-5 h-5"
+                                  />
+                                </div>
+                                <select
+                                  aria-label="Icon preset"
+                                  value={activePreset}
+                                  onChange={(e) => {
+                                    const nextPreset =
+                                      e.target.value as SocialPresetKey;
+                                    const nextMeta = getPresetMeta(nextPreset);
+                                    setLinks((prev) =>
+                                      prev.map((l, i) => {
+                                        if (i !== idx) return l;
+                                        const isDefaultLabel =
+                                          !l.label.trim() ||
+                                          SOCIAL_PRESETS.some(
+                                            (p) => p.label === l.label.trim(),
+                                          );
+                                        return {
+                                          ...l,
+                                          preset: nextPreset,
+                                          label: isDefaultLabel
+                                            ? nextMeta.label
+                                            : l.label,
+                                        };
+                                      }),
+                                    );
+                                  }}
+                                  className="flex-1 min-w-0 rounded-lg bg-[#0b0615] border border-purple-500/20 px-2.5 py-2 text-xs text-white focus:outline-none cursor-pointer"
+                                >
+                                  {SOCIAL_PRESETS.map((p) => (
+                                    <option key={p.key} value={p.key}>
+                                      {p.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Target URL */}
+                              <input
+                                type="url"
+                                value={item.url}
+                                onChange={(e) =>
+                                  setLinks((prev) =>
+                                    prev.map((l, i) =>
+                                      i === idx
+                                        ? {...l, url: e.target.value}
+                                        : l,
+                                    ),
+                                  )
+                                }
+                                placeholder={presetMeta.placeholderUrl}
+                                className="flex-1 min-w-0 rounded-lg bg-[#0b0615] border border-purple-500/20 px-3 py-2 text-xs sm:text-sm text-white focus:outline-none"
+                              />
+
+                              {/* Reorder & Remove */}
+                              <div className="flex items-center justify-end gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveLink(idx, -1)}
+                                  aria-label="Move link up"
+                                  className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-300 hover:text-white disabled:opacity-35 cursor-pointer"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === links.length - 1}
+                                  onClick={() => handleMoveLink(idx, 1)}
+                                  aria-label="Move link down"
+                                  className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-300 hover:text-white disabled:opacity-35 cursor-pointer"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLinks((prev) =>
+                                      prev.filter((_, i) => i !== idx),
+                                    )
+                                  }
+                                  aria-label="Remove link"
+                                  className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Optional Hover Tooltip + Custom Logo Image URL/Upload */}
+                            <div
+                              className={`grid grid-cols-1 ${
+                                activePreset === 'custom' ? 'sm:grid-cols-2' : ''
+                              } gap-2.5`}
                             >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={idx === links.length - 1}
-                              onClick={() => handleMoveLink(idx, 1)}
-                              aria-label="Move link down"
-                              className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-300 hover:text-white disabled:opacity-35 cursor-pointer"
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setLinks((prev) =>
-                                  prev.filter((_, i) => i !== idx),
-                                )
-                              }
-                              aria-label="Remove link"
-                              className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                              <input
+                                type="text"
+                                value={item.label}
+                                onChange={(e) =>
+                                  setLinks((prev) =>
+                                    prev.map((l, i) =>
+                                      i === idx
+                                        ? {...l, label: e.target.value}
+                                        : l,
+                                    ),
+                                  )
+                                }
+                                placeholder="Hover tooltip label (e.g. GitHub)"
+                                className="rounded-lg bg-[#0b0615] border border-purple-500/15 px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none"
+                              />
+
+                              {activePreset === 'custom' && (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="url"
+                                    value={item.customIconUrl ?? ''}
+                                    onChange={(e) =>
+                                      setLinks((prev) =>
+                                        prev.map((l, i) =>
+                                          i === idx
+                                            ? {
+                                                ...l,
+                                                preset: 'custom',
+                                                customIconUrl: e.target.value,
+                                              }
+                                            : l,
+                                        ),
+                                      )
+                                    }
+                                    placeholder="Custom Logo Image URL (https://...)"
+                                    className="flex-1 min-w-0 rounded-lg bg-[#0b0615] border border-purple-500/20 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                                  />
+                                  <label className="inline-flex items-center gap-1 rounded-lg bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-2.5 py-1.5 text-[11px] font-semibold text-purple-200 cursor-pointer shrink-0">
+                                    {uploadingLinkIconIdx === idx ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Upload className="w-3 h-3" />
+                                    )}
+                                    <span>Upload</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={(e) =>
+                                        handleUploadLinkIcon(e, idx)
+                                      }
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

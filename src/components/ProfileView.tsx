@@ -1,15 +1,12 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {
-  ExternalLink,
-  Eye,
-  Music,
-  Pause,
-  Play,
-  Volume2,
-  VolumeX,
-} from 'lucide-react';
+import {Eye, Music, Pause, Play} from 'lucide-react';
 import {ProfileRecord} from '../lib/supabase';
 import {getRuntimeDomainInfo, sanitizeExternalUrl} from '../lib/domain';
+import {
+  getPresetMeta,
+  inferPresetFromLink,
+  SocialPresetIcon,
+} from './SocialPresetIcons';
 
 export const ALLOWED_PROFILE_FONTS = [
   'Plus Jakarta Sans',
@@ -81,7 +78,7 @@ function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string})
 
   if (activeLines.length === 0) {
     return staticBio ? (
-      <p className="mt-4 max-w-md text-sm text-[#c7bfdc] leading-relaxed">
+      <p className="mt-4 max-w-md text-sm text-zinc-300 leading-relaxed">
         {staticBio}
       </p>
     ) : null;
@@ -91,11 +88,11 @@ function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string})
   const visibleText = currentLine.slice(0, charIndex);
 
   return (
-    <p className="mt-4 max-w-md min-h-[1.5rem] font-mono text-xs sm:text-sm text-[#e2dbf7] leading-relaxed">
+    <p className="mt-4 max-w-md min-h-[1.5rem] font-mono text-xs sm:text-sm text-zinc-100 leading-relaxed">
       <span>{visibleText}</span>
       <span
         aria-hidden="true"
-        className="inline-block w-[2px] h-4 ml-0.5 align-middle bg-purple-400 animate-pulse"
+        className="inline-block w-[2px] h-4 ml-0.5 align-middle bg-white/80 animate-pulse"
       />
     </p>
   );
@@ -109,7 +106,6 @@ interface ProfileViewProps {
 export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   const {host} = getRuntimeDomainInfo();
   const [isPlaying, setIsPlaying] = useState(false);
-  const [videoMuted, setVideoMuted] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -129,12 +125,24 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     Math.min(100, Math.max(20, profile.card_opacity ?? 88)) / 100;
   const cardBlur = Math.min(32, Math.max(0, profile.card_blur ?? 16));
 
+  const hasCustomMediaBg = Boolean(
+    profile.bg_type && profile.bg_type !== 'none' && safeBgUrl,
+  );
+
   const displayName = profile.global_name || profile.username;
   const badges = Array.isArray(profile.badges) ? profile.badges : [];
   const links = Array.isArray(profile.links) ? profile.links : [];
   const typewriterLines = Array.isArray(profile.typewriter_texts)
     ? profile.typewriter_texts
     : [];
+
+  // Always enforce muted=true on background videos on mount/load
+  useEffect(() => {
+    if (profile.bg_type === 'video' && videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+    }
+  }, [profile.bg_type, safeBgUrl]);
 
   useEffect(() => {
     if (isPreview || !profile.music_autoplay || !safeMusicUrl) return;
@@ -164,14 +172,6 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     }
   };
 
-  const toggleVideoMute = () => {
-    const nextMuted = !videoMuted;
-    setVideoMuted(nextMuted);
-    if (videoRef.current) {
-      videoRef.current.muted = nextMuted;
-    }
-  };
-
   const bgPositionClass = isPreview ? 'absolute inset-0' : 'fixed inset-0';
 
   return (
@@ -180,18 +180,24 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
         isPreview
           ? 'relative min-h-[580px] rounded-b-2xl overflow-hidden px-4 py-8'
           : 'relative min-h-screen overflow-hidden px-4 sm:px-6 py-16'
-      } bg-[#07030d] flex items-center justify-center`}
+      } bg-[#09090c] flex items-center justify-center`}
       style={{fontFamily: `"${fontFamily}", sans-serif`}}
     >
-      {/* Background Video / Image Layer */}
+      {/* Background Video (Strictly Muted) / Image Layer */}
       {profile.bg_type === 'video' && safeBgUrl && (
         <video
           ref={videoRef}
           src={safeBgUrl}
           autoPlay
           loop
-          muted={videoMuted}
+          muted
           playsInline
+          onLoadedMetadata={() => {
+            if (videoRef.current) {
+              videoRef.current.defaultMuted = true;
+              videoRef.current.muted = true;
+            }
+          }}
           className={`${bgPositionClass} w-full h-full object-cover pointer-events-none scale-105`}
           style={{filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined}}
         />
@@ -208,41 +214,19 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
         />
       )}
 
-      {/* Configurable Dark Overlay / Radial Accent Scrim */}
+      {/* Clean Neutral Dark Overlay (No Purple Blur Tint) */}
       <div
         aria-hidden="true"
         className={`${bgPositionClass} pointer-events-none`}
         style={{
-          backgroundColor:
-            profile.bg_type && profile.bg_type !== 'none' && safeBgUrl
-              ? `rgba(7, 3, 13, ${bgOpacity})`
-              : 'transparent',
-          backgroundImage:
-            !profile.bg_type || profile.bg_type === 'none' || !safeBgUrl
-              ? `radial-gradient(circle at 50% 25%, ${accentColor}30 0%, rgba(7, 3, 13, 0) 70%)`
-              : undefined,
+          backgroundColor: hasCustomMediaBg
+            ? `rgba(8, 8, 12, ${bgOpacity})`
+            : 'transparent',
+          backgroundImage: !hasCustomMediaBg
+            ? `radial-gradient(circle at 50% 25%, ${accentColor}22 0%, rgba(9, 9, 12, 0) 68%)`
+            : undefined,
         }}
       />
-
-      {/* Video Sound Toggle Button */}
-      {profile.bg_type === 'video' && safeBgUrl && (
-        <button
-          type="button"
-          onClick={toggleVideoMute}
-          aria-label={
-            videoMuted ? 'Unmute background video' : 'Mute background video'
-          }
-          className={`${
-            isPreview ? 'absolute bottom-3 right-3' : 'fixed bottom-5 right-5'
-          } z-30 w-9 h-9 rounded-full bg-[#0e071a]/80 hover:bg-[#190d2e] border border-purple-400/30 backdrop-blur-md flex items-center justify-center text-slate-200 hover:text-white transition-colors cursor-pointer`}
-        >
-          {videoMuted ? (
-            <VolumeX className="w-4 h-4" />
-          ) : (
-            <Volume2 className="w-4 h-4" style={{color: accentColor}} />
-          )}
-        </button>
-      )}
 
       {safeMusicUrl && (
         <audio
@@ -253,16 +237,16 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
         />
       )}
 
-      {/* Main Profile Glass Card */}
+      {/* Main Profile Neutral Glass Card */}
       <div className={`relative z-10 w-full ${isPreview ? 'max-w-sm' : 'max-w-lg'} mx-auto`}>
         <div
-          className="rounded-3xl border p-6 sm:p-8 shadow-[0_24px_80px_rgba(4,2,10,0.85)] transition-all"
+          className="rounded-3xl border p-6 sm:p-8 transition-all"
           style={{
-            backgroundColor: `rgba(14, 7, 26, ${cardOpacity})`,
+            backgroundColor: `rgba(12, 12, 16, ${cardOpacity})`,
             backdropFilter: `blur(${cardBlur}px)`,
             WebkitBackdropFilter: `blur(${cardBlur}px)`,
-            borderColor: `${accentColor}4d`,
-            boxShadow: `0 24px 80px rgba(4, 2, 10, 0.85), 0 0 42px ${accentColor}24`,
+            borderColor: 'rgba(255, 255, 255, 0.12)',
+            boxShadow: '0 24px 70px rgba(0, 0, 0, 0.55)',
           }}
         >
           {/* Avatar + Discord Avatar Decoration Overlay */}
@@ -281,7 +265,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
                   className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white"
                   style={{
                     borderColor: `${accentColor}77`,
-                    background: `linear-gradient(135deg, ${accentColor}, #3b0764)`,
+                    background: `linear-gradient(135deg, ${accentColor}, #18181b)`,
                   }}
                 >
                   {displayName.charAt(0).toUpperCase()}
@@ -303,16 +287,16 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               {displayName}
             </h1>
 
-            <div className="mt-1.5 flex items-center gap-2 text-xs font-mono text-purple-200">
+            <div className="mt-1.5 flex items-center gap-2 text-xs font-mono text-zinc-200">
               <span style={{color: accentColor}}>@{profile.username}</span>
               <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1 text-slate-300 tabular-nums">
+              <span className="inline-flex items-center gap-1 text-zinc-300 tabular-nums">
                 <Eye className="w-3.5 h-3.5" style={{color: accentColor}} />
                 <span>{(profile.views ?? 0).toLocaleString()} views</span>
               </span>
             </div>
 
-            <p className="mt-1 font-mono text-[11px] text-slate-400">
+            <p className="mt-1 font-mono text-[11px] text-zinc-400">
               {host}/{profile.username}
             </p>
 
@@ -322,8 +306,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
                 {badges.map((badge) => (
                   <span
                     key={badge}
-                    className="inline-flex items-center rounded-full bg-[#1a0f30]/90 border px-3 py-1 text-xs font-semibold text-purple-100"
-                    style={{borderColor: `${accentColor}44`}}
+                    className="inline-flex items-center rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-semibold text-zinc-100"
                   >
                     {badge}
                   </span>
@@ -339,7 +322,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               />
             ) : (
               profile.bio && (
-                <p className="mt-4 max-w-md text-xs sm:text-sm text-[#c7bfdc] leading-relaxed">
+                <p className="mt-4 max-w-md text-xs sm:text-sm text-zinc-300 leading-relaxed">
                   {profile.bio}
                 </p>
               )
@@ -351,10 +334,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             profile.music_artist ||
             safeMusicUrl ||
             safeMusicCover) && (
-            <div
-              className="mt-6 rounded-2xl bg-[#090412]/85 border px-3.5 py-2.5 flex items-center justify-between gap-3"
-              style={{borderColor: `${accentColor}38`}}
-            >
+            <div className="mt-6 rounded-2xl bg-black/45 border border-white/10 px-3.5 py-2.5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 {safeMusicCover ? (
                   <img
@@ -397,35 +377,44 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             </div>
           )}
 
-          {/* Social Links */}
-          <div className="mt-6 space-y-2.5">
-            {links.length === 0 ? (
-              <div className="rounded-xl bg-[#090412]/65 border border-purple-500/15 px-4 py-3.5 text-center text-xs text-slate-400">
-                No public links added yet.
-              </div>
-            ) : (
-              links.map((link, idx) => {
+          {/* Social Links — Clean Horizontal Icon/Logo-Only Row */}
+          {links.length > 0 && (
+            <div className="mt-6 pt-1 flex flex-wrap items-center justify-center gap-4 sm:gap-5">
+              {links.map((link, idx) => {
                 const safeHref = sanitizeExternalUrl(link.url);
                 if (!safeHref) return null;
+                const preset = inferPresetFromLink(link);
+                const presetMeta = getPresetMeta(preset);
+                const tooltipText =
+                  link.label?.trim() ||
+                  (preset !== 'custom' && preset !== 'globe'
+                    ? presetMeta.label
+                    : safeHref);
+
                 return (
                   <a
-                    key={`${link.label}-${idx}`}
+                    key={`${preset}-${idx}`}
                     href={safeHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-between rounded-xl bg-[#090412]/80 hover:bg-[#140a26]/90 border px-4 py-3 text-xs sm:text-sm font-medium text-white transition-all"
-                    style={{borderColor: `${accentColor}35`}}
+                    title={tooltipText}
+                    aria-label={tooltipText}
+                    className="group relative inline-flex items-center justify-center text-white/85 hover:text-white transition-all duration-150 hover:scale-115 hover:-translate-y-0.5 focus:outline-none"
                   >
-                    <span className="truncate">{link.label}</span>
-                    <ExternalLink
-                      className="w-4 h-4 shrink-0"
-                      style={{color: accentColor}}
+                    <SocialPresetIcon
+                      preset={preset}
+                      customIconUrl={link.customIconUrl}
+                      label={tooltipText}
+                      className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]"
                     />
+                    <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-900/95 border border-white/15 px-2 py-0.5 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                      {tooltipText}
+                    </span>
                   </a>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
