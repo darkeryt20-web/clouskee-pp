@@ -1,15 +1,35 @@
 import {Disc3, Music, Pause, Play} from 'lucide-react';
 import {CSSProperties} from 'react';
-import {ProfileRecord} from '../lib/supabase';
+import {MusicCardPosition, ProfileRecord} from '../lib/supabase';
 
-export const MUSIC_POSITIONS = [
-  {id: 'profile_top', label: 'Profile Card Top'},
-  {id: 'profile_bottom', label: 'Profile Card Bottom'},
+export const MUSIC_POSITIONS: {id: MusicCardPosition; label: string}[] = [
+  {id: 'profile_card_on', label: 'Inside Profile Card'},
+  {id: 'profile_card_bottom', label: 'Below Profile Card'},
   {id: 'page_top_left', label: 'Page Top Left'},
   {id: 'page_top_right', label: 'Page Top Right'},
   {id: 'page_bottom_left', label: 'Page Bottom Left'},
   {id: 'page_bottom_right', label: 'Page Bottom Right'},
-] as const;
+];
+
+export function normalizeMusicPosition(
+  pos: string | null | undefined,
+): MusicCardPosition {
+  if (pos === 'profile_top' || pos === 'profile_card_on') {
+    return 'profile_card_on';
+  }
+  if (pos === 'profile_bottom' || pos === 'profile_card_bottom') {
+    return 'profile_card_bottom';
+  }
+  if (
+    pos === 'page_top_left' ||
+    pos === 'page_top_right' ||
+    pos === 'page_bottom_left' ||
+    pos === 'page_bottom_right'
+  ) {
+    return pos;
+  }
+  return 'profile_card_on';
+}
 
 export const MUSIC_STYLES = [
   {id: 1, label: 'Style 1 · Classic Glass'},

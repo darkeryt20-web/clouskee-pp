@@ -36,12 +36,27 @@ export interface ProfileLinkItem {
 }
 
 export type MusicCardPosition =
-  | 'profile_top'
-  | 'profile_bottom'
+  | 'profile_card_on'
+  | 'profile_card_bottom'
   | 'page_top_left'
   | 'page_top_right'
   | 'page_bottom_left'
   | 'page_bottom_right';
+
+export type CustomCursorStyle =
+  | 'dot_ring'
+  | 'glow_orb'
+  | 'crosshair'
+  | 'custom_image';
+
+export type PageTitleMode = 'username' | 'global_name';
+
+export type GlobalNameEffect =
+  | 'none'
+  | 'gradient_shimmer'
+  | 'neon_pulse'
+  | 'typewriter_cursor'
+  | 'floating_letter';
 
 export interface ProfileRecord {
   id: string;
@@ -49,6 +64,17 @@ export interface ProfileRecord {
   email: string | null;
   username: string;
   global_name: string | null;
+  global_name_typewriter: boolean | null;
+  global_name_texts: string[] | null;
+  global_name_effect: GlobalNameEffect | null;
+  global_name_color: string | null;
+  global_name_glow: boolean | null;
+  page_title_mode: PageTitleMode | null;
+  page_title_typewriter: boolean | null;
+  page_title_texts: string[] | null;
+  custom_cursor_enabled: boolean | null;
+  custom_cursor_style: CustomCursorStyle | null;
+  custom_cursor_url: string | null;
   avatar_url: string | null;
   avatar_decoration_url: string | null;
   discord_id: string | null;
@@ -74,6 +100,7 @@ export interface ProfileRecord {
   font_family: string | null;
   badges: string[] | null;
   links: ProfileLinkItem[] | null;
+  music_card_enabled: boolean | null;
   music_title: string | null;
   music_artist: string | null;
   music_url: string | null;
@@ -219,6 +246,17 @@ export async function createProfileRecord(
     email: payload.email ?? null,
     username: payload.username.toLowerCase(),
     global_name: payload.global_name ?? payload.username,
+    global_name_typewriter: payload.global_name_typewriter ?? false,
+    global_name_texts: payload.global_name_texts ?? [],
+    global_name_effect: payload.global_name_effect ?? 'none',
+    global_name_color: payload.global_name_color ?? '#ffffff',
+    global_name_glow: payload.global_name_glow ?? false,
+    page_title_mode: payload.page_title_mode ?? 'global_name',
+    page_title_typewriter: payload.page_title_typewriter ?? false,
+    page_title_texts: payload.page_title_texts ?? [],
+    custom_cursor_enabled: payload.custom_cursor_enabled ?? false,
+    custom_cursor_style: payload.custom_cursor_style ?? 'dot_ring',
+    custom_cursor_url: payload.custom_cursor_url ?? null,
     avatar_url: payload.avatar_url ?? null,
     avatar_decoration_url: payload.avatar_decoration_url ?? null,
     discord_id: payload.discord_id ?? null,
@@ -244,12 +282,13 @@ export async function createProfileRecord(
     font_family: payload.font_family ?? 'Plus Jakarta Sans',
     badges: payload.badges ?? [],
     links: payload.links ?? [],
+    music_card_enabled: payload.music_card_enabled ?? true,
     music_title: payload.music_title ?? null,
     music_artist: payload.music_artist ?? null,
     music_url: payload.music_url ?? null,
     music_cover: payload.music_cover ?? null,
     music_autoplay: payload.music_autoplay ?? false,
-    music_position: payload.music_position ?? 'profile_bottom',
+    music_position: payload.music_position ?? 'profile_card_on',
     music_style: payload.music_style ?? 1,
     music_show_cover: payload.music_show_cover ?? true,
     music_show_progress: payload.music_show_progress ?? true,
@@ -273,6 +312,17 @@ export async function createProfileRecord(
       email: defaultProfile.email,
       username: defaultProfile.username,
       global_name: defaultProfile.global_name,
+      global_name_typewriter: defaultProfile.global_name_typewriter,
+      global_name_texts: defaultProfile.global_name_texts,
+      global_name_effect: defaultProfile.global_name_effect,
+      global_name_color: defaultProfile.global_name_color,
+      global_name_glow: defaultProfile.global_name_glow,
+      page_title_mode: defaultProfile.page_title_mode,
+      page_title_typewriter: defaultProfile.page_title_typewriter,
+      page_title_texts: defaultProfile.page_title_texts,
+      custom_cursor_enabled: defaultProfile.custom_cursor_enabled,
+      custom_cursor_style: defaultProfile.custom_cursor_style,
+      custom_cursor_url: defaultProfile.custom_cursor_url,
       avatar_url: defaultProfile.avatar_url,
       avatar_decoration_url: defaultProfile.avatar_decoration_url,
       discord_id: defaultProfile.discord_id,
@@ -298,6 +348,7 @@ export async function createProfileRecord(
       font_family: defaultProfile.font_family,
       badges: defaultProfile.badges,
       links: defaultProfile.links,
+      music_card_enabled: defaultProfile.music_card_enabled,
       music_title: defaultProfile.music_title,
       music_artist: defaultProfile.music_artist,
       music_url: defaultProfile.music_url,
@@ -350,7 +401,12 @@ export async function updateProfileRecord(
 export async function uploadProfileMedia(
   profileId: string,
   file: File,
-  folder: 'backgrounds' | 'audio' | 'covers' | 'icons' = 'backgrounds',
+  folder:
+    | 'backgrounds'
+    | 'audio'
+    | 'covers'
+    | 'icons'
+    | 'cursors' = 'backgrounds',
 ): Promise<{url: string | null; error?: string}> {
   if (!supabase) {
     return {

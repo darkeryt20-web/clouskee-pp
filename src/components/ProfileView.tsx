@@ -1,13 +1,22 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {MouseEvent, useEffect, useMemo, useRef, useState} from 'react';
 import {Eye} from 'lucide-react';
-import {MusicCardPosition, ProfileRecord} from '../lib/supabase';
+import {
+  CustomCursorStyle,
+  GlobalNameEffect,
+  MusicCardPosition,
+  ProfileRecord,
+} from '../lib/supabase';
 import {getRuntimeDomainInfo, sanitizeExternalUrl} from '../lib/domain';
 import {
   getPresetMeta,
   inferPresetFromLink,
   SocialPresetIcon,
 } from './SocialPresetIcons';
-import {MusicPlayerCard} from './MusicPlayerCard';
+import {MusicPlayerCard, normalizeMusicPosition} from './MusicPlayerCard';
+import {CustomCursorLayer, useFinePointer} from './CustomCursorLayer';
+
+const DEFAULT_DOCUMENT_TITLE =
+  'Clouskee PP — Next-Gen Profile Pages & Secure File Hosting';
 
 export const ALLOWED_PROFILE_FONTS = [
   'Plus Jakarta Sans',
@@ -18,10 +27,21 @@ export const ALLOWED_PROFILE_FONTS = [
   'Space Mono',
 ] as const;
 
-export function sanitizeHexColor(color: string | null | undefined): string {
-  if (!color || typeof color !== 'string') return '#8b5cf6';
+export const GLOBAL_NAME_EFFECTS: {id: GlobalNameEffect; label: string}[] = [
+  {id: 'none', label: 'None'},
+  {id: 'gradient_shimmer', label: 'Gradient Shimmer'},
+  {id: 'neon_pulse', label: 'Neon Pulse'},
+  {id: 'typewriter_cursor', label: 'Typewriter Cursor'},
+  {id: 'floating_letter', label: 'Floating Letters'},
+];
+
+export function sanitizeHexColor(
+  color: string | null | undefined,
+  fallback = '#8b5cf6',
+): string {
+  if (!color || typeof color !== 'string') return fallback;
   const trimmed = color.trim();
-  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : '#8b5cf6';
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : fallback;
 }
 
 export function sanitizeFontFamily(font: string | null | undefined): string {
@@ -33,8 +53,14 @@ export function sanitizeFontFamily(font: string | null | undefined): string {
     : 'Plus Jakarta Sans';
 }
 
-function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string}) {
-  const activeLines = useMemo(
+function useTypewriterCycle(
+  lines: string[],
+  enabled: boolean,
+  typeSpeedMs = 65,
+  deleteSpeedMs = 35,
+  pauseMs = 1500,
+) {
+  const cleanLines = useMemo(
     () => lines.map((l) => l.trim()).filter(Boolean),
     [lines],
   );
@@ -42,19 +68,21 @@ function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string})
   const [charIndex, setCharIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
 
+  const signature = cleanLines.join('\n');
+
   useEffect(() => {
     setLineIndex(0);
     setCharIndex(0);
     setDeleting(false);
-  }, [activeLines]);
+  }, [signature, enabled]);
 
   useEffect(() => {
-    if (activeLines.length === 0) return;
-    const current = activeLines[lineIndex % activeLines.length];
+    if (!enabled || cleanLines.length === 0) return;
+    const current = cleanLines[lineIndex % cleanLines.length];
 
-    let delay = deleting ? 32 : 58;
+    let delay = deleting ? deleteSpeedMs : typeSpeedMs;
     if (!deleting && charIndex === current.length) {
-      delay = 1600;
+      delay = pauseMs;
     } else if (deleting && charIndex === 0) {
       delay = 320;
     }
@@ -70,23 +98,75 @@ function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string})
         setCharIndex((c) => c - 1);
       } else {
         setDeleting(false);
-        setLineIndex((i) => (i + 1) % activeLines.length);
+        setLineIndex((i) => (i + 1) % cleanLines.length);
       }
     }, delay);
 
     return () => window.clearTimeout(timer);
-  }, [activeLines, lineIndex, charIndex, deleting]);
+  }, [
+    enabled,
+    cleanLines,
+    lineIndex,
+    charIndex,
+    deleting,
+    typeSpeedMs,
+    deleteSpeedMs,
+    pauseMs,
+  ]);
 
-  if (activeLines.length === 0) {
+  if (!enabled || cleanLines.length === 0) {
+    return cleanLines[0] ?? '';
+  }
+
+  const currentLine = cleanLines[lineIndex % cleanLines.length];
+  return currentLine.slice(0, charIndex);
+}
+
+export function useAnimatedPageTitle(profile: ProfileRecord): string {
+  const mode = profile.page_title_mode === 'username' ? 'username' : 'global_name';
+  const baseTitle =
+    mode === 'username'
+      ? `@${profile.username}`
+      : profile.global_name?.trim() || profile.username;
+
+  const extraTitles = useMemo(
+    () =>
+      Array.isArray(profile.page_title_texts)
+        ? profile.page_title_texts.map((t) => t.trim()).filter(Boolean)
+        : [],
+    [profile.page_title_texts],
+  );
+
+  const allTitles = useMemo(
+    () => [baseTitle, ...extraTitles],
+    [baseTitle, extraTitles],
+  );
+
+  const typewriterEnabled = Boolean(profile.page_title_typewriter);
+  const typed = useTypewriterCycle(allTitles, typewriterEnabled, 175, 95, 1400);
+
+  if (!typewriterEnabled) {
+    return baseTitle;
+  }
+
+  // Never allow an empty document.title so browsers don't flash the raw URL
+  return typed.length > 0 ? typed : '|';
+}
+
+function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string}) {
+  const cleanLines = useMemo(
+    () => lines.map((l) => l.trim()).filter(Boolean),
+    [lines],
+  );
+  const visibleText = useTypewriterCycle(cleanLines, cleanLines.length > 0);
+
+  if (cleanLines.length === 0) {
     return staticBio ? (
       <p className="mt-4 max-w-md text-sm text-zinc-300 leading-relaxed">
         {staticBio}
       </p>
     ) : null;
   }
-
-  const currentLine = activeLines[lineIndex % activeLines.length];
-  const visibleText = currentLine.slice(0, charIndex);
 
   return (
     <p className="mt-4 max-w-md min-h-[1.5rem] font-mono text-xs sm:text-sm text-zinc-100 leading-relaxed">
@@ -99,6 +179,91 @@ function TypewriterBio({lines, staticBio}: {lines: string[]; staticBio: string})
   );
 }
 
+function GlobalNameHeading({
+  profile,
+  accentColor,
+}: {
+  profile: ProfileRecord;
+  accentColor: string;
+}) {
+  const baseName = profile.global_name?.trim() || profile.username;
+  const extraNames = useMemo(
+    () =>
+      Array.isArray(profile.global_name_texts)
+        ? profile.global_name_texts.map((t) => t.trim()).filter(Boolean)
+        : [],
+    [profile.global_name_texts],
+  );
+  const lines = useMemo(() => [baseName, ...extraNames], [baseName, extraNames]);
+  const typewriterEnabled = Boolean(profile.global_name_typewriter);
+  const typedName = useTypewriterCycle(lines, typewriterEnabled, 85, 45, 1600);
+
+  const displayedName = typewriterEnabled ? typedName : baseName;
+  const effect: GlobalNameEffect = profile.global_name_effect ?? 'none';
+  const nameColor = sanitizeHexColor(profile.global_name_color, '#ffffff');
+  const hasGlow = Boolean(profile.global_name_glow) || effect === 'neon_pulse';
+
+  const textShadow = hasGlow
+    ? effect === 'neon_pulse'
+      ? `0 0 14px ${nameColor}aa, 0 0 28px ${accentColor}77`
+      : `0 0 18px ${nameColor}88`
+    : undefined;
+
+  const isShimmer = effect === 'gradient_shimmer';
+  const showCursor = typewriterEnabled || effect === 'typewriter_cursor';
+
+  return (
+    <h1
+      className={`mt-4 min-h-[2.25rem] text-xl sm:text-3xl font-extrabold tracking-tight flex items-center justify-center flex-wrap ${
+        effect === 'neon_pulse' ? 'animate-neon-pulse' : ''
+      }`}
+      style={{textShadow}}
+    >
+      {effect === 'floating_letter' ? (
+        <span className="inline-flex flex-wrap justify-center">
+          {(displayedName || '\u00A0').split('').map((char, idx) => (
+            <span
+              key={`${idx}-${char}`}
+              className="inline-block animate-gentle-float"
+              style={{
+                color: nameColor,
+                animationDelay: `${idx * 65}ms`,
+              }}
+            >
+              {char === ' ' ? '\u00A0' : char}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span
+          className={
+            isShimmer
+              ? 'bg-clip-text text-transparent animate-text-shimmer'
+              : undefined
+          }
+          style={
+            isShimmer
+              ? {
+                  backgroundImage: `linear-gradient(90deg, ${nameColor}, ${accentColor}, #ffffff, ${nameColor})`,
+                }
+              : {color: nameColor}
+          }
+        >
+          {displayedName}
+        </span>
+      )}
+
+      {showCursor && (
+        <span
+          aria-hidden="true"
+          className="inline-block w-[2px] h-6 sm:h-7 ml-1 align-middle animate-pulse"
+          style={{backgroundColor: nameColor}}
+        />
+      )}
+    </h1>
+  );
+}
+
 interface ProfileViewProps {
   profile: ProfileRecord;
   isPreview?: boolean;
@@ -106,6 +271,8 @@ interface ProfileViewProps {
 
 export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   const {host} = getRuntimeDomainInfo();
+  const isFinePointer = useFinePointer();
+
   const clickToEnterEnabled = profile.click_to_enter_enabled !== false;
   const clickToEnterText =
     profile.click_to_enter_text?.trim() || 'Click to Enter';
@@ -116,7 +283,9 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [cursorPos, setCursorPos] = useState({x: 0, y: 0, visible: false});
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -149,14 +318,36 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
 
   const showProfileLink = profile.show_profile_link === true;
   const showViewsCount = profile.show_views_count !== false;
-  const musicPosition: MusicCardPosition =
-    profile.music_position ?? 'profile_bottom';
-  const hasMusicCard = Boolean(
+
+  const musicCardEnabled = profile.music_card_enabled !== false;
+  const musicPosition = normalizeMusicPosition(profile.music_position);
+  const hasMusicMetadata = Boolean(
     profile.music_title ||
       profile.music_artist ||
       safeMusicUrl ||
       safeMusicCover,
   );
+  const showVisibleMusicCard = musicCardEnabled && hasMusicMetadata;
+
+  const customCursorEnabled =
+    Boolean(profile.custom_cursor_enabled) && isFinePointer;
+  const customCursorStyle: CustomCursorStyle =
+    profile.custom_cursor_style ?? 'dot_ring';
+
+  const animatedBrowserTitle = useAnimatedPageTitle(profile);
+
+  // Update real browser document.title on public /:username pages
+  useEffect(() => {
+    if (isPreview || typeof document === 'undefined') return;
+    document.title = animatedBrowserTitle;
+  }, [isPreview, animatedBrowserTitle]);
+
+  useEffect(() => {
+    if (isPreview || typeof document === 'undefined') return;
+    return () => {
+      document.title = DEFAULT_DOCUMENT_TITLE;
+    };
+  }, [isPreview]);
 
   useEffect(() => {
     if (isPreview || !clickToEnterEnabled) {
@@ -181,9 +372,14 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     setIsPlaying(false);
   }, [safeMusicUrl]);
 
-  // Autoplay when gate is disabled and music_autoplay is on
+  // Autoplay when gate is disabled and music_autoplay is on (even if music card UI is hidden)
   useEffect(() => {
-    if (isPreview || clickToEnterEnabled || !profile.music_autoplay || !safeMusicUrl) {
+    if (
+      isPreview ||
+      clickToEnterEnabled ||
+      !profile.music_autoplay ||
+      !safeMusicUrl
+    ) {
       return;
     }
     const audioEl = audioRef.current;
@@ -200,6 +396,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
       videoRef.current.defaultMuted = true;
       videoRef.current.muted = true;
     }
+    // Start audio even when music_card_enabled is false (invisible background audio)
     if (safeMusicUrl && audioRef.current) {
       audioRef.current
         .play()
@@ -233,17 +430,36 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     }
   };
 
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!customCursorEnabled) return;
+    if (isPreview && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCursorPos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        visible: true,
+      });
+    } else {
+      setCursorPos({x: e.clientX, y: e.clientY, visible: true});
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (!customCursorEnabled) return;
+    setCursorPos((prev) => ({...prev, visible: false}));
+  };
+
   const bgPositionClass = isPreview ? 'absolute inset-0' : 'fixed inset-0';
   const isCornerTop =
-    hasMusicCard &&
+    showVisibleMusicCard &&
     (musicPosition === 'page_top_left' || musicPosition === 'page_top_right');
   const isCornerBottom =
-    hasMusicCard &&
+    showVisibleMusicCard &&
     (musicPosition === 'page_bottom_left' ||
       musicPosition === 'page_bottom_right');
 
   const cornerPlacementClass: Record<
-    Exclude<MusicCardPosition, 'profile_top' | 'profile_bottom'>,
+    Exclude<MusicCardPosition, 'profile_card_on' | 'profile_card_bottom'>,
     string
   > = {
     page_top_left: isPreview
@@ -261,7 +477,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   };
 
   const renderMusicCard = (extraClass = '') => {
-    if (!hasMusicCard) return null;
+    if (!showVisibleMusicCard) return null;
     return (
       <MusicPlayerCard
         profile={profile}
@@ -281,6 +497,9 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
 
   return (
     <div
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       className={`${
         isPreview
           ? `relative min-h-[600px] rounded-b-2xl overflow-hidden px-4 ${
@@ -289,6 +508,8 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           : `relative min-h-screen overflow-hidden px-4 sm:px-6 ${
               isCornerTop ? 'pt-28 sm:pt-20' : 'py-14'
             } ${isCornerBottom ? 'pb-28 sm:pb-20' : 'py-14'}`
+      } ${
+        customCursorEnabled ? 'cursor-none [&_*]:cursor-none' : ''
       } bg-[#09090c] flex items-center justify-center`}
       style={{fontFamily: `"${fontFamily}", sans-serif`}}
     >
@@ -337,6 +558,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
         }}
       />
 
+      {/* Hidden Audio Element — Always Active Even When Music Card Is Off */}
       {safeMusicUrl && (
         <audio
           ref={audioRef}
@@ -361,9 +583,9 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
       )}
 
       {/* Page-Corner Music Card Positions */}
-      {hasMusicCard &&
-        musicPosition !== 'profile_top' &&
-        musicPosition !== 'profile_bottom' && (
+      {showVisibleMusicCard &&
+        musicPosition !== 'profile_card_on' &&
+        musicPosition !== 'profile_card_bottom' && (
           <div
             className={`${cornerPlacementClass[musicPosition]} z-30 ${
               isPreview
@@ -375,7 +597,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           </div>
         )}
 
-      {/* Main Profile Neutral Glass Card */}
+      {/* Main Profile Container + Optional Separate Card Directly Below */}
       <div
         className={`relative z-10 w-full ${
           isPreview ? 'max-w-sm' : 'max-w-lg'
@@ -391,9 +613,6 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             boxShadow: '0 24px 70px rgba(0, 0, 0, 0.55)',
           }}
         >
-          {/* Music Card Position: Top of Profile Card */}
-          {musicPosition === 'profile_top' && renderMusicCard('mb-6')}
-
           {/* Avatar + Discord Avatar Decoration Overlay */}
           <div className="flex flex-col items-center text-center">
             <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
@@ -428,9 +647,8 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               )}
             </div>
 
-            <h1 className="mt-4 text-xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {displayName}
-            </h1>
+            {/* Enhanced Global Name with Effects & Typewriter Animation */}
+            <GlobalNameHeading profile={profile} accentColor={accentColor} />
 
             <p
               className="mt-1 text-xs font-mono"
@@ -513,8 +731,8 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             </div>
           )}
 
-          {/* Music Card Position: Bottom of Profile Card */}
-          {musicPosition === 'profile_bottom' && renderMusicCard('mt-6')}
+          {/* Music Card Position: profile_card_on (Embedded Inside Profile Card) */}
+          {musicPosition === 'profile_card_on' && renderMusicCard('mt-6')}
 
           {/* Views Count at Bottom-Left of Profile Card */}
           {showViewsCount && (
@@ -526,6 +744,9 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             </div>
           )}
         </div>
+
+        {/* Music Card Position: profile_card_bottom (Separate Standalone Card Below Profile Card) */}
+        {musicPosition === 'profile_card_bottom' && renderMusicCard('mt-4')}
       </div>
 
       {/* Full-Screen "Click to Enter" Normal Plain Text Overlay (Public Profile Only) */}
@@ -548,6 +769,16 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           </span>
         </div>
       )}
+
+      {/* Custom Cursor Overlay */}
+      <CustomCursorLayer
+        enabled={customCursorEnabled}
+        style={customCursorStyle}
+        customUrl={profile.custom_cursor_url}
+        accentColor={accentColor}
+        isPreview={isPreview}
+        position={cursorPos}
+      />
     </div>
   );
 }

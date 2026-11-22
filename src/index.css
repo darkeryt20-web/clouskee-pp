@@ -33,6 +33,35 @@
   }
 }
 
+@keyframes text-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes gentle-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes neon-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.88;
+    filter: brightness(1.22);
+  }
+}
+
 .animate-astronaut-float {
   animation: astronaut-float 4.2s ease-in-out infinite;
 }
@@ -41,9 +70,25 @@
   animation: astronaut-shadow 4.2s ease-in-out infinite;
 }
 
+.animate-text-shimmer {
+  background-size: 200% auto;
+  animation: text-shimmer 3.2s linear infinite;
+}
+
+.animate-gentle-float {
+  animation: gentle-float 3s ease-in-out infinite;
+}
+
+.animate-neon-pulse {
+  animation: neon-pulse 2.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-astronaut-float,
-  .animate-astronaut-shadow {
+  .animate-astronaut-shadow,
+  .animate-text-shimmer,
+  .animate-gentle-float,
+  .animate-neon-pulse {
     animation: none;
   }
 }

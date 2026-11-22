@@ -13,6 +13,7 @@ import {
   Link2,
   Loader2,
   MessageCircle,
+  MousePointer2,
   Music,
   Palette,
   Plus,
@@ -27,7 +28,10 @@ import {
 } from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
 import {
+  CustomCursorStyle,
+  GlobalNameEffect,
   MusicCardPosition,
+  PageTitleMode,
   ProfileLinkItem,
   ProfileRecord,
   SocialPresetKey,
@@ -37,11 +41,18 @@ import {sanitizeExternalUrl} from '../lib/domain';
 import {LoadingSpinner} from '../components/LoadingSpinner';
 import {
   ALLOWED_PROFILE_FONTS,
+  GLOBAL_NAME_EFFECTS,
   ProfileView,
   sanitizeFontFamily,
   sanitizeHexColor,
+  useAnimatedPageTitle,
 } from '../components/ProfileView';
-import {MUSIC_POSITIONS, MUSIC_STYLES} from '../components/MusicPlayerCard';
+import {
+  MUSIC_POSITIONS,
+  MUSIC_STYLES,
+  normalizeMusicPosition,
+} from '../components/MusicPlayerCard';
+import {CURSOR_STYLES} from '../components/CustomCursorLayer';
 import {
   getPresetMeta,
   inferPresetFromLink,
@@ -95,6 +106,18 @@ const TABS: {id: DashboardTab; label: string; icon: typeof User}[] = [
   {id: 'connections', label: 'Connections', icon: ShieldCheck},
 ];
 
+function LiveTabTitleBadge({profile}: {profile: ProfileRecord}) {
+  const title = useAnimatedPageTitle(profile);
+  return (
+    <span
+      title={`Browser Tab Title: ${title}`}
+      className="hidden sm:inline-block max-w-[115px] truncate rounded bg-[#160b29] border border-purple-500/20 px-2 py-0.5 font-mono text-[10px] text-slate-300"
+    >
+      {title}
+    </span>
+  );
+}
+
 export function DashboardPage() {
   const {
     activeProfile,
@@ -117,6 +140,18 @@ export function DashboardPage() {
   const [updatingUsername, setUpdatingUsername] = useState(false);
 
   const [globalName, setGlobalName] = useState('');
+  const [globalNameTypewriter, setGlobalNameTypewriter] = useState(false);
+  const [globalNameTexts, setGlobalNameTexts] = useState<string[]>([]);
+  const [globalNameEffect, setGlobalNameEffect] =
+    useState<GlobalNameEffect>('none');
+  const [globalNameColor, setGlobalNameColor] = useState('#ffffff');
+  const [globalNameGlow, setGlobalNameGlow] = useState(false);
+
+  const [pageTitleMode, setPageTitleMode] =
+    useState<PageTitleMode>('global_name');
+  const [pageTitleTypewriter, setPageTitleTypewriter] = useState(false);
+  const [pageTitleTexts, setPageTitleTexts] = useState<string[]>([]);
+
   const [avatarUrl, setAvatarUrl] = useState('');
   const [bio, setBio] = useState('');
   const [typewriterEnabled, setTypewriterEnabled] = useState(false);
@@ -125,7 +160,7 @@ export function DashboardPage() {
   const [clickToEnterText, setClickToEnterText] = useState('Click to Enter');
   const [showViewsCount, setShowViewsCount] = useState(true);
 
-  // Appearance & Background state
+  // Appearance & Background + Custom Cursor state
   const [bgType, setBgType] = useState<'none' | 'image' | 'video'>('none');
   const [bgUrl, setBgUrl] = useState('');
   const [bgOpacity, setBgOpacity] = useState(55);
@@ -134,15 +169,20 @@ export function DashboardPage() {
   const [cardBlur, setCardBlur] = useState(16);
   const [accentColor, setAccentColor] = useState('#8b5cf6');
   const [fontFamily, setFontFamily] = useState<string>('Plus Jakarta Sans');
+  const [customCursorEnabled, setCustomCursorEnabled] = useState(false);
+  const [customCursorStyle, setCustomCursorStyle] =
+    useState<CustomCursorStyle>('dot_ring');
+  const [customCursorUrl, setCustomCursorUrl] = useState('');
 
   // Audio state
+  const [musicCardEnabled, setMusicCardEnabled] = useState(true);
   const [musicTitle, setMusicTitle] = useState('');
   const [musicArtist, setMusicArtist] = useState('');
   const [musicUrl, setMusicUrl] = useState('');
   const [musicCover, setMusicCover] = useState('');
   const [musicAutoplay, setMusicAutoplay] = useState(false);
   const [musicPosition, setMusicPosition] =
-    useState<MusicCardPosition>('profile_bottom');
+    useState<MusicCardPosition>('profile_card_on');
   const [musicStyle, setMusicStyle] = useState<number>(1);
   const [musicShowCover, setMusicShowCover] = useState(true);
   const [musicShowProgress, setMusicShowProgress] = useState(true);
@@ -156,7 +196,7 @@ export function DashboardPage() {
 
   // UI feedback states
   const [uploadingField, setUploadingField] = useState<
-    'bg' | 'audio' | 'cover' | 'avatar' | null
+    'bg' | 'audio' | 'cover' | 'avatar' | 'cursor' | null
   >(null);
   const [uploadingLinkIconIdx, setUploadingLinkIconIdx] = useState<
     number | null
@@ -172,6 +212,28 @@ export function DashboardPage() {
     setDraftUsername(activeProfile.username);
     setUsernameStatus({state: 'idle'});
     setGlobalName(activeProfile.global_name ?? activeProfile.username);
+    setGlobalNameTypewriter(Boolean(activeProfile.global_name_typewriter));
+    setGlobalNameTexts(
+      Array.isArray(activeProfile.global_name_texts)
+        ? [...activeProfile.global_name_texts]
+        : [],
+    );
+    setGlobalNameEffect(activeProfile.global_name_effect ?? 'none');
+    setGlobalNameColor(
+      sanitizeHexColor(activeProfile.global_name_color, '#ffffff'),
+    );
+    setGlobalNameGlow(Boolean(activeProfile.global_name_glow));
+
+    setPageTitleMode(
+      activeProfile.page_title_mode === 'username' ? 'username' : 'global_name',
+    );
+    setPageTitleTypewriter(Boolean(activeProfile.page_title_typewriter));
+    setPageTitleTexts(
+      Array.isArray(activeProfile.page_title_texts)
+        ? [...activeProfile.page_title_texts]
+        : [],
+    );
+
     setAvatarUrl(activeProfile.avatar_url ?? '');
     setBio(activeProfile.bio ?? '');
     setTypewriterEnabled(Boolean(activeProfile.typewriter_enabled));
@@ -198,13 +260,17 @@ export function DashboardPage() {
       ),
     );
     setFontFamily(sanitizeFontFamily(activeProfile.font_family));
+    setCustomCursorEnabled(Boolean(activeProfile.custom_cursor_enabled));
+    setCustomCursorStyle(activeProfile.custom_cursor_style ?? 'dot_ring');
+    setCustomCursorUrl(activeProfile.custom_cursor_url ?? '');
 
+    setMusicCardEnabled(activeProfile.music_card_enabled !== false);
     setMusicTitle(activeProfile.music_title ?? '');
     setMusicArtist(activeProfile.music_artist ?? '');
     setMusicUrl(activeProfile.music_url ?? '');
     setMusicCover(activeProfile.music_cover ?? '');
     setMusicAutoplay(Boolean(activeProfile.music_autoplay));
-    setMusicPosition(activeProfile.music_position ?? 'profile_bottom');
+    setMusicPosition(normalizeMusicPosition(activeProfile.music_position));
     setMusicStyle(Math.min(5, Math.max(1, Number(activeProfile.music_style || 1))));
     setMusicShowCover(activeProfile.music_show_cover !== false);
     setMusicShowProgress(activeProfile.music_show_progress !== false);
@@ -262,6 +328,17 @@ export function DashboardPage() {
       ...activeProfile,
       username: sanitizeHandle(draftUsername) || activeProfile.username,
       global_name: globalName.trim() || activeProfile.username,
+      global_name_typewriter: globalNameTypewriter,
+      global_name_texts: globalNameTexts,
+      global_name_effect: globalNameEffect,
+      global_name_color: globalNameColor,
+      global_name_glow: globalNameGlow,
+      page_title_mode: pageTitleMode,
+      page_title_typewriter: pageTitleTypewriter,
+      page_title_texts: pageTitleTexts,
+      custom_cursor_enabled: customCursorEnabled,
+      custom_cursor_style: customCursorStyle,
+      custom_cursor_url: customCursorUrl.trim() || null,
       avatar_url: avatarUrl.trim() || null,
       bio,
       typewriter_enabled: typewriterEnabled,
@@ -279,6 +356,7 @@ export function DashboardPage() {
       accent_color: accentColor,
       theme_color: accentColor,
       font_family: fontFamily,
+      music_card_enabled: musicCardEnabled,
       music_title: musicTitle.trim() || null,
       music_artist: musicArtist.trim() || null,
       music_url: musicUrl.trim() || null,
@@ -298,6 +376,17 @@ export function DashboardPage() {
     activeProfile,
     draftUsername,
     globalName,
+    globalNameTypewriter,
+    globalNameTexts,
+    globalNameEffect,
+    globalNameColor,
+    globalNameGlow,
+    pageTitleMode,
+    pageTitleTypewriter,
+    pageTitleTexts,
+    customCursorEnabled,
+    customCursorStyle,
+    customCursorUrl,
     avatarUrl,
     bio,
     typewriterEnabled,
@@ -313,6 +402,7 @@ export function DashboardPage() {
     cardBlur,
     accentColor,
     fontFamily,
+    musicCardEnabled,
     musicTitle,
     musicArtist,
     musicUrl,
@@ -373,7 +463,7 @@ export function DashboardPage() {
 
   const handleMediaUpload = async (
     e: ChangeEvent<HTMLInputElement>,
-    target: 'bg' | 'audio' | 'cover' | 'avatar',
+    target: 'bg' | 'audio' | 'cover' | 'avatar' | 'cursor',
   ) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -384,7 +474,13 @@ export function DashboardPage() {
     setUploadingField(target);
     try {
       const folder =
-        target === 'audio' ? 'audio' : target === 'bg' ? 'backgrounds' : 'covers';
+        target === 'audio'
+          ? 'audio'
+          : target === 'bg'
+            ? 'backgrounds'
+            : target === 'cursor'
+              ? 'cursors'
+              : 'covers';
       const {url, error} = await uploadProfileMedia(
         activeProfile.id,
         file,
@@ -411,6 +507,9 @@ export function DashboardPage() {
         setMusicCover(url);
       } else if (target === 'avatar') {
         setAvatarUrl(url);
+      } else if (target === 'cursor') {
+        setCustomCursorUrl(url);
+        setCustomCursorStyle('custom_image');
       }
       setSaveMessage('Media uploaded. Click Save Changes to publish.');
     } finally {
@@ -582,7 +681,33 @@ export function DashboardPage() {
       });
     }
 
+    const cleanNameColor = globalNameColor.trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(cleanNameColor)) {
+      setErrorMessage(
+        'Global Name color must be a valid 6-digit hex code (e.g. #ffffff).',
+      );
+      return;
+    }
+
+    let safeCursorUrl: string | null = null;
+    if (customCursorUrl.trim()) {
+      const checked = sanitizeExternalUrl(customCursorUrl);
+      if (!checked) {
+        setErrorMessage(
+          'Custom cursor image URL must start with https:// or http://.',
+        );
+        return;
+      }
+      safeCursorUrl = checked;
+    }
+
     const cleanedTypewriterLines = typewriterTexts
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const cleanedGlobalNameLines = globalNameTexts
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const cleanedPageTitleLines = pageTitleTexts
       .map((line) => line.trim())
       .filter(Boolean);
 
@@ -590,6 +715,17 @@ export function DashboardPage() {
     try {
       await updateOwnProfile({
         global_name: globalName.trim() || activeProfile.username,
+        global_name_typewriter: globalNameTypewriter,
+        global_name_texts: cleanedGlobalNameLines,
+        global_name_effect: globalNameEffect,
+        global_name_color: cleanNameColor,
+        global_name_glow: globalNameGlow,
+        page_title_mode: pageTitleMode,
+        page_title_typewriter: pageTitleTypewriter,
+        page_title_texts: cleanedPageTitleLines,
+        custom_cursor_enabled: customCursorEnabled,
+        custom_cursor_style: customCursorStyle,
+        custom_cursor_url: safeCursorUrl,
         avatar_url: safeAvatar,
         bio: bio.trim(),
         typewriter_enabled: typewriterEnabled,
@@ -607,6 +743,7 @@ export function DashboardPage() {
         accent_color: cleanAccent,
         theme_color: cleanAccent,
         font_family: sanitizeFontFamily(fontFamily),
+        music_card_enabled: musicCardEnabled,
         music_title: musicTitle.trim() || null,
         music_artist: musicArtist.trim() || null,
         music_url: safeMusic,
@@ -953,6 +1090,259 @@ export function DashboardPage() {
                     )}
                   </div>
 
+                  {/* Global Name Typewriter & Effects */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-white">
+                          Global Name Typewriter &amp; Styling
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Animate and style your main display name with effects and glow.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={globalNameTypewriter}
+                        onClick={() => setGlobalNameTypewriter((p) => !p)}
+                        className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                          globalNameTypewriter
+                            ? 'bg-purple-600'
+                            : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`block w-5 h-5 rounded-full bg-white transition-transform ${
+                            globalNameTypewriter
+                              ? 'translate-x-5'
+                              : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {globalNameTypewriter && (
+                      <div className="space-y-2 pt-2 border-t border-purple-500/15">
+                        <p className="text-[11px] text-slate-400">
+                          Optional extra rotating names (cycles with your Global Name):
+                        </p>
+                        {globalNameTexts.map((line, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={line}
+                              onChange={(e) =>
+                                setGlobalNameTexts((prev) =>
+                                  prev.map((item, i) =>
+                                    i === idx ? e.target.value : item,
+                                  ),
+                                )
+                              }
+                              placeholder={`Alternate name #${idx + 1}`}
+                              className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 px-3 py-2 text-xs text-white focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setGlobalNameTexts((prev) =>
+                                  prev.filter((_, i) => i !== idx),
+                                )
+                              }
+                              aria-label="Remove alternate name"
+                              className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setGlobalNameTexts((prev) => [...prev, ''])
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg bg-purple-950/60 border border-purple-500/30 px-3 py-1.5 text-xs font-semibold text-purple-200 hover:text-white cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Rotating Name</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-purple-500/15">
+                      <div>
+                        <label
+                          htmlFor="dash-name-effect"
+                          className="block text-[11px] font-medium text-slate-300 mb-1.5"
+                        >
+                          Global Name Effect
+                        </label>
+                        <select
+                          id="dash-name-effect"
+                          value={globalNameEffect}
+                          onChange={(e) =>
+                            setGlobalNameEffect(
+                              e.target.value as GlobalNameEffect,
+                            )
+                          }
+                          className="w-full rounded-xl bg-[#0b0615] border border-purple-500/25 px-3 py-2 text-xs text-white focus:outline-none cursor-pointer"
+                        >
+                          {GLOBAL_NAME_EFFECTS.map((ef) => (
+                            <option key={ef.id} value={ef.id}>
+                              {ef.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="dash-name-color"
+                          className="block text-[11px] font-medium text-slate-300 mb-1.5"
+                        >
+                          Global Name Color
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            aria-label="Pick global name color"
+                            value={sanitizeHexColor(globalNameColor, '#ffffff')}
+                            onChange={(e) => setGlobalNameColor(e.target.value)}
+                            className="w-9 h-9 rounded-lg bg-[#0b0615] border border-purple-500/25 p-0.5 cursor-pointer"
+                          />
+                          <input
+                            id="dash-name-color"
+                            type="text"
+                            value={globalNameColor}
+                            onChange={(e) => setGlobalNameColor(e.target.value)}
+                            placeholder="#ffffff"
+                            className="flex-1 min-w-0 rounded-xl bg-[#0b0615] border border-purple-500/25 px-3 py-2 font-mono text-xs text-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-purple-500/15">
+                      <span className="text-xs text-slate-200">
+                        Global Name Glow
+                      </span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={globalNameGlow}
+                        onClick={() => setGlobalNameGlow((p) => !p)}
+                        className={`w-10 h-5 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                          globalNameGlow ? 'bg-purple-600' : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                            globalNameGlow ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Browser Tab Title (document.title) + Two Typewriter Mode Buttons */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold text-white">
+                          Browser Tab Title
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Choose the browser tab title source and toggle tab typewriter animation.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPageTitleMode('username')}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                          pageTitleMode === 'username'
+                            ? 'bg-purple-600/25 border-purple-400 text-white'
+                            : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Username
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPageTitleMode('global_name')}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                          pageTitleMode === 'global_name'
+                            ? 'bg-purple-600/25 border-purple-400 text-white'
+                            : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Global Name
+                      </button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={pageTitleTypewriter}
+                        onClick={() => setPageTitleTypewriter((p) => !p)}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                          pageTitleTypewriter
+                            ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
+                            : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Typewriter: {pageTitleTypewriter ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+
+                    {pageTitleTypewriter && (
+                      <div className="space-y-2 pt-2 border-t border-purple-500/15">
+                        <p className="text-[11px] text-slate-400">
+                          Optional extra tab title lines:
+                        </p>
+                        {pageTitleTexts.map((line, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={line}
+                              onChange={(e) =>
+                                setPageTitleTexts((prev) =>
+                                  prev.map((item, i) =>
+                                    i === idx ? e.target.value : item,
+                                  ),
+                                )
+                              }
+                              placeholder={`Extra tab title #${idx + 1}`}
+                              className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 px-3 py-1.5 text-xs text-white focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPageTitleTexts((prev) =>
+                                  prev.filter((_, i) => i !== idx),
+                                )
+                              }
+                              aria-label="Remove tab title line"
+                              className="p-2 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPageTitleTexts((prev) => [...prev, ''])
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg bg-purple-950/60 border border-purple-500/30 px-3 py-1.5 text-xs font-semibold text-purple-200 hover:text-white cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Tab Title Line</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Click to Enter Overlay & Views Counter Controls */}
                   <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-4">
                     <div className="flex items-center justify-between gap-3">
@@ -1246,12 +1636,124 @@ export function DashboardPage() {
                       </select>
                     </div>
                   </div>
+
+                  {/* Custom Cursor Controls */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <MousePointer2 className="w-4 h-4 text-purple-400 shrink-0" />
+                        <div>
+                          <p className="text-xs font-semibold text-white">
+                            Custom Profile Cursor
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Applies inside Live Preview and on your public page (desktop pointer).
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={customCursorEnabled}
+                        onClick={() => setCustomCursorEnabled((p) => !p)}
+                        className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                          customCursorEnabled ? 'bg-purple-600' : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`block w-5 h-5 rounded-full bg-white transition-transform ${
+                            customCursorEnabled
+                              ? 'translate-x-5'
+                              : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {customCursorEnabled && (
+                      <div className="space-y-3 pt-2 border-t border-purple-500/15">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {CURSOR_STYLES.map((st) => {
+                            const selected = customCursorStyle === st.id;
+                            return (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() => setCustomCursorStyle(st.id)}
+                                className={`rounded-xl border px-3 py-2 text-xs font-medium transition-all cursor-pointer ${
+                                  selected
+                                    ? 'bg-purple-600/25 border-purple-400 text-white'
+                                    : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {st.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {customCursorStyle === 'custom_image' && (
+                          <div className="flex flex-col sm:flex-row gap-2.5">
+                            <input
+                              type="url"
+                              value={customCursorUrl}
+                              onChange={(e) =>
+                                setCustomCursorUrl(e.target.value)
+                              }
+                              placeholder="Custom Cursor Image URL (.png, .svg, .cur)"
+                              className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2 text-xs sm:text-sm text-white focus:outline-none"
+                            />
+                            <label className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-4 py-2 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
+                              {uploadingField === 'cursor' ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Upload className="w-3.5 h-3.5" />
+                              )}
+                              <span>Upload Cursor</span>
+                              <input
+                                type="file"
+                                accept="image/*,.cur,.ani"
+                                onChange={(e) => handleMediaUpload(e, 'cursor')}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* TAB 3: AUDIO & MUSIC PLAYER */}
               {activeTab === 'audio' && (
                 <div className="space-y-4">
+                  {/* Music Card Visibility Toggle */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white">
+                        Show Music Card Widget
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Turn OFF to hide the music player UI while still playing your audio track invisibly in the background.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={musicCardEnabled}
+                      onClick={() => setMusicCardEnabled((p) => !p)}
+                      className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                        musicCardEnabled ? 'bg-purple-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`block w-5 h-5 rounded-full bg-white transition-transform ${
+                          musicCardEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label
@@ -1379,124 +1881,130 @@ export function DashboardPage() {
                     </button>
                   </div>
 
-                  {/* Music Card Position (6 Positions) */}
-                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-2.5">
-                    <p className="text-xs font-semibold text-white">
-                      Music Card Position
-                    </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {MUSIC_POSITIONS.map((pos) => {
-                        const selected = musicPosition === pos.id;
-                        return (
-                          <button
-                            key={pos.id}
-                            type="button"
-                            onClick={() => setMusicPosition(pos.id)}
-                            className={`rounded-xl border px-3 py-2 text-xs font-medium transition-all cursor-pointer ${
-                              selected
-                                ? 'bg-purple-600/25 border-purple-400 text-white'
-                                : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            {pos.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Music Card Style (5 Styles) */}
-                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-2.5">
-                    <p className="text-xs font-semibold text-white">
-                      Music Card Visual Style
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {MUSIC_STYLES.map((st) => {
-                        const selected = musicStyle === st.id;
-                        return (
-                          <button
-                            key={st.id}
-                            type="button"
-                            onClick={() => setMusicStyle(st.id)}
-                            className={`rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
-                              selected
-                                ? 'bg-purple-600/25 border-purple-400 text-white'
-                                : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            {st.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Individual On/Off Toggles for Music Card Elements */}
-                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-3">
-                    <p className="text-xs font-semibold text-white">
-                      Music Card Elements
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {(
-                        [
-                          {
-                            label: 'Cover Image',
-                            checked: musicShowCover,
-                            toggle: () => setMusicShowCover((v) => !v),
-                          },
-                          {
-                            label: 'Real-Time Progress Bar',
-                            checked: musicShowProgress,
-                            toggle: () => setMusicShowProgress((v) => !v),
-                          },
-                          {
-                            label: 'Countdown Timer (-mm:ss)',
-                            checked: musicShowCountdown,
-                            toggle: () => setMusicShowCountdown((v) => !v),
-                          },
-                          {
-                            label: 'Play / Pause Controls',
-                            checked: musicShowControls,
-                            toggle: () => setMusicShowControls((v) => !v),
-                          },
-                          {
-                            label: 'Track Title',
-                            checked: musicShowTitle,
-                            toggle: () => setMusicShowTitle((v) => !v),
-                          },
-                          {
-                            label: 'Artist Name',
-                            checked: musicShowArtist,
-                            toggle: () => setMusicShowArtist((v) => !v),
-                          },
-                        ] as const
-                      ).map((item) => (
-                        <div
-                          key={item.label}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0615] border border-purple-500/15 px-3 py-2"
-                        >
-                          <span className="text-xs text-slate-200">
-                            {item.label}
-                          </span>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={item.checked}
-                            onClick={item.toggle}
-                            className={`w-9 h-5 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
-                              item.checked ? 'bg-purple-600' : 'bg-slate-700'
-                            }`}
-                          >
-                            <span
-                              className={`block w-4 h-4 rounded-full bg-white transition-transform ${
-                                item.checked ? 'translate-x-4' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
+                  {musicCardEnabled && (
+                    <>
+                      {/* Music Card Position (6 Positions) */}
+                      <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-2.5">
+                        <p className="text-xs font-semibold text-white">
+                          Music Card Position
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {MUSIC_POSITIONS.map((pos) => {
+                            const selected = musicPosition === pos.id;
+                            return (
+                              <button
+                                key={pos.id}
+                                type="button"
+                                onClick={() => setMusicPosition(pos.id)}
+                                className={`rounded-xl border px-3 py-2 text-xs font-medium transition-all cursor-pointer ${
+                                  selected
+                                    ? 'bg-purple-600/25 border-purple-400 text-white'
+                                    : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {pos.label}
+                              </button>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+
+                      {/* Music Card Style (5 Styles) */}
+                      <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-2.5">
+                        <p className="text-xs font-semibold text-white">
+                          Music Card Visual Style
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {MUSIC_STYLES.map((st) => {
+                            const selected = musicStyle === st.id;
+                            return (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() => setMusicStyle(st.id)}
+                                className={`rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
+                                  selected
+                                    ? 'bg-purple-600/25 border-purple-400 text-white'
+                                    : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {st.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Individual On/Off Toggles for Music Card Elements */}
+                      <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-3">
+                        <p className="text-xs font-semibold text-white">
+                          Music Card Elements
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {(
+                            [
+                              {
+                                label: 'Cover Image',
+                                checked: musicShowCover,
+                                toggle: () => setMusicShowCover((v) => !v),
+                              },
+                              {
+                                label: 'Real-Time Progress Bar',
+                                checked: musicShowProgress,
+                                toggle: () => setMusicShowProgress((v) => !v),
+                              },
+                              {
+                                label: 'Countdown Timer (-mm:ss)',
+                                checked: musicShowCountdown,
+                                toggle: () => setMusicShowCountdown((v) => !v),
+                              },
+                              {
+                                label: 'Play / Pause Controls',
+                                checked: musicShowControls,
+                                toggle: () => setMusicShowControls((v) => !v),
+                              },
+                              {
+                                label: 'Track Title',
+                                checked: musicShowTitle,
+                                toggle: () => setMusicShowTitle((v) => !v),
+                              },
+                              {
+                                label: 'Artist Name',
+                                checked: musicShowArtist,
+                                toggle: () => setMusicShowArtist((v) => !v),
+                              },
+                            ] as const
+                          ).map((item) => (
+                            <div
+                              key={item.label}
+                              className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0615] border border-purple-500/15 px-3 py-2"
+                            >
+                              <span className="text-xs text-slate-200">
+                                {item.label}
+                              </span>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={item.checked}
+                                onClick={item.toggle}
+                                className={`w-9 h-5 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                                  item.checked ? 'bg-purple-600' : 'bg-slate-700'
+                                }`}
+                              >
+                                <span
+                                  className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                                    item.checked
+                                      ? 'translate-x-4'
+                                      : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1875,8 +2383,11 @@ export function DashboardPage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400/70" />
                 </div>
 
-                <div className="flex-1 max-w-[230px] truncate rounded-md bg-[#120922] border border-purple-500/20 px-2.5 py-1 text-center font-mono text-[11px] text-purple-200">
-                  clouskee.pp/{liveDraftProfile.username}
+                <div className="flex items-center gap-2 min-w-0">
+                  <LiveTabTitleBadge profile={liveDraftProfile} />
+                  <div className="flex-1 max-w-[180px] truncate rounded-md bg-[#120922] border border-purple-500/20 px-2.5 py-1 text-center font-mono text-[11px] text-purple-200">
+                    clouskee.pp/{liveDraftProfile.username}
+                  </div>
                 </div>
 
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
