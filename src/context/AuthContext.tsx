@@ -488,7 +488,11 @@ export function AuthProvider({children}: {children: ReactNode}) {
           claimedPlan,
           intent,
         );
-        navigate(`/${encodeURIComponent(synced.username)}`, {replace: true});
+        if (intent === 'link') {
+          navigate('/dashboard', {replace: true});
+        } else {
+          navigate(`/${encodeURIComponent(synced.username)}`, {replace: true});
+        }
       } catch {
         // Handled by callback fallback if needed
       }

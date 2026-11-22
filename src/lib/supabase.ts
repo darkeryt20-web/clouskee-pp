@@ -33,10 +33,12 @@ export interface ProfileRecord {
   discord_avatar: string | null;
   discord_avatar_decoration: string | null;
   bio: string | null;
+  theme_color: string | null;
   badges: string[] | null;
   links: ProfileLinkItem[] | null;
   music_title: string | null;
   music_artist: string | null;
+  music_url: string | null;
   views: number;
   monthly_views: number;
   plan: string | null;
@@ -173,10 +175,12 @@ export async function createProfileRecord(
         discord_avatar: payload.discord_avatar ?? null,
         discord_avatar_decoration: payload.discord_avatar_decoration ?? null,
         bio: payload.bio ?? '',
+        theme_color: payload.theme_color ?? '#8b5cf6',
         badges: payload.badges ?? [],
         links: payload.links ?? [],
         music_title: payload.music_title ?? null,
         music_artist: payload.music_artist ?? null,
+        music_url: payload.music_url ?? null,
         views: 0,
         monthly_views: 0,
         plan: payload.plan ?? 'free',
@@ -199,10 +203,12 @@ export async function createProfileRecord(
       discord_avatar: payload.discord_avatar ?? null,
       discord_avatar_decoration: payload.discord_avatar_decoration ?? null,
       bio: payload.bio ?? '',
+      theme_color: payload.theme_color ?? '#8b5cf6',
       badges: payload.badges ?? [],
       links: payload.links ?? [],
       music_title: payload.music_title ?? null,
       music_artist: payload.music_artist ?? null,
+      music_url: payload.music_url ?? null,
       views: payload.views ?? 0,
       monthly_views: payload.monthly_views ?? 0,
       plan: payload.plan ?? 'free',
@@ -239,14 +245,72 @@ export async function updateProfileRecord(
   return {data: data as ProfileRecord};
 }
 
-export async function incrementProfileViews(username: string): Promise<void> {
-  if (!supabase) return;
+async function detectVisitorIp(): Promise<string> {
   try {
-    await supabase.rpc('increment_profile_views', {
-      target_username: username.toLowerCase(),
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('https://api.ipify.org?format=json', {
+      signal: controller.signal,
     });
+    window.clearTimeout(timer);
+    if (res.ok) {
+      const json = (await res.json()) as {ip?: string};
+      if (json.ip && typeof json.ip === 'string') {
+        return json.ip.trim();
+      }
+    }
   } catch {
-    // Ignore RPC failure if function not provisioned yet
+    // Blocked by adblocker or network timeout — fall back below
+  }
+
+  // Safe deterministic fallback fingerprint when public IP lookup is blocked
+  const nav = typeof navigator !== 'undefined' ? navigator.userAgent : 'web';
+  const tz =
+    typeof Intl !== 'undefined'
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'utc'
+      : 'utc';
+  return `fallback-${tz}-${nav.length}`;
+}
+
+export async function recordUniqueProfileView(
+  username: string,
+): Promise<{counted: boolean}> {
+  if (!supabase || typeof window === 'undefined') {
+    return {counted: false};
+  }
+
+  const cleanUsername = username.trim().toLowerCase();
+  const storageKey = `clouskee_viewed_${cleanUsername}`;
+
+  try {
+    if (window.localStorage.getItem(storageKey) === '1') {
+      return {counted: false};
+    }
+  } catch {
+    // Ignore localStorage read restrictions
+  }
+
+  try {
+    const clientIp = await detectVisitorIp();
+    const {data, error} = await supabase.rpc('record_unique_profile_view', {
+      target_username: cleanUsername,
+      client_ip: clientIp,
+    });
+
+    if (error) {
+      return {counted: false};
+    }
+
+    try {
+      window.localStorage.setItem(storageKey, '1');
+    } catch {
+      // Ignore localStorage write restrictions
+    }
+
+    // Return true unless the RPC explicitly returned false (duplicate IP in DB)
+    return {counted: data !== false};
+  } catch {
+    return {counted: false};
   }
 }
 

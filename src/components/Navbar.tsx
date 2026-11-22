@@ -1,6 +1,15 @@
-import {useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {Link, NavLink, useNavigate} from 'react-router-dom';
-import {ArrowRight, ExternalLink, LogOut, Menu, User, X} from 'lucide-react';
+import {
+  ArrowRight,
+  ChevronDown,
+  ExternalLink,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  User,
+  X,
+} from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
 import {sanitizeExternalUrl} from '../lib/domain';
 
@@ -12,11 +21,38 @@ export function Navbar() {
   const navigate = useNavigate();
   const {activeProfile, signOut} = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const closeMobile = () => setMobileOpen(false);
+  const closeAccountMenu = () => setAccountMenuOpen(false);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [accountMenuOpen]);
 
   const safeAvatar = sanitizeExternalUrl(activeProfile?.avatar_url);
+  const displayHandle =
+    activeProfile?.global_name ||
+    (activeProfile ? `@${activeProfile.username}` : '');
 
   const navLinkClass = ({isActive}: {isActive: boolean}) =>
     `whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:text-white ${
@@ -32,6 +68,7 @@ export function Navbar() {
 
   const handleSignOut = async () => {
     closeMobile();
+    closeAccountMenu();
     await signOut();
     navigate('/');
   };
@@ -45,7 +82,10 @@ export function Navbar() {
         {/* Left: Brand Logo + Text */}
         <Link
           to="/"
-          onClick={closeMobile}
+          onClick={() => {
+            closeMobile();
+            closeAccountMenu();
+          }}
           className="flex items-center gap-2.5 shrink-0 whitespace-nowrap group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 rounded-full pr-1"
         >
           {!logoError ? (
@@ -100,37 +140,86 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Right: Auth CTA or Active Profile + Mobile Hamburger */}
+        {/* Right: Auth CTA or Logged-In User Dropdown + Mobile Hamburger */}
         <div className="flex items-center gap-2 shrink-0">
           {activeProfile ? (
-            <div className="hidden sm:flex items-center gap-1.5">
-              <Link
-                to={`/${encodeURIComponent(activeProfile.username)}`}
-                className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-full bg-[#1a0f30] hover:bg-[#241542] border border-purple-400/30 pl-1.5 pr-3.5 py-1 text-[12.5px] font-semibold text-white transition-colors"
+            <div ref={dropdownRef} className="relative hidden sm:block">
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                onClick={() => setAccountMenuOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-full bg-[#1a0f30] hover:bg-[#241542] border border-purple-400/35 pl-1.5 pr-3 py-1 text-[12.5px] font-semibold text-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
               >
                 {safeAvatar ? (
                   <img
                     src={safeAvatar}
                     alt={activeProfile.username}
                     referrerPolicy="no-referrer"
-                    className="w-5 h-5 rounded-full object-cover"
+                    className="w-6 h-6 rounded-full object-cover"
                   />
                 ) : (
-                  <span className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center">
-                    <User className="w-3 h-3 text-white" />
+                  <span className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center">
+                    <User className="w-3.5 h-3.5 text-white" />
                   </span>
                 )}
-                <span>@{activeProfile.username}</span>
-              </Link>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                aria-label="Sign out"
-                title="Sign out"
-                className="w-8 h-8 rounded-full bg-[#140a26] hover:bg-rose-950/60 border border-purple-500/20 hover:border-rose-400/40 flex items-center justify-center text-slate-300 hover:text-rose-200 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                <span className="max-w-[120px] truncate">{displayHandle}</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-purple-300 transition-transform duration-150 ${
+                    accountMenuOpen ? 'rotate-180' : ''
+                  }`}
+                  aria-hidden="true"
+                />
               </button>
+
+              {accountMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Account navigation"
+                  className="absolute right-0 mt-2.5 w-52 rounded-2xl bg-[rgba(17,10,30,0.97)] backdrop-blur-xl border border-purple-400/25 shadow-[0_18px_45px_rgba(7,3,13,0.9)] p-1.5"
+                >
+                  <div className="px-3 py-2 border-b border-purple-500/15 mb-1">
+                    <p className="text-xs font-semibold text-white truncate">
+                      {activeProfile.global_name || activeProfile.username}
+                    </p>
+                    <p className="font-mono text-[11px] text-purple-300 truncate">
+                      @{activeProfile.username}
+                    </p>
+                  </div>
+
+                  <Link
+                    role="menuitem"
+                    to={`/${encodeURIComponent(activeProfile.username)}`}
+                    onClick={closeAccountMenu}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-purple-500/20 transition-colors"
+                  >
+                    <User className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Visit Profile Page</span>
+                  </Link>
+
+                  <Link
+                    role="menuitem"
+                    to="/dashboard"
+                    onClick={closeAccountMenu}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-purple-500/20 transition-colors"
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Dashboard</span>
+                  </Link>
+
+                  <div className="h-px bg-purple-500/15 my-1" />
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-rose-300 hover:text-rose-200 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <Link
@@ -181,21 +270,32 @@ export function Navbar() {
           </NavLink>
           <div className="h-px bg-purple-400/15 my-1.5" />
           {activeProfile ? (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex flex-col gap-2 pt-1">
               <Link
                 to={`/${encodeURIComponent(activeProfile.username)}`}
                 onClick={closeMobile}
-                className="flex-1 text-center rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white"
+                className="flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white"
               >
-                @{activeProfile.username}
+                <User className="w-4 h-4" />
+                <span>Visit Profile Page</span>
               </Link>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="rounded-xl border border-purple-400/20 bg-purple-950/30 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white cursor-pointer"
-              >
-                Sign Out
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/dashboard"
+                  onClick={closeMobile}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-purple-400/25 bg-purple-950/35 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span>Dashboard</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="rounded-xl border border-rose-400/25 bg-rose-950/30 px-4 py-2.5 text-sm font-medium text-rose-200 hover:text-white cursor-pointer"
+                >
+                  Sign Out
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2 pt-1">

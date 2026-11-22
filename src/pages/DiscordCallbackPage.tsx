@@ -67,7 +67,11 @@ export function DiscordCallbackPage() {
       intent,
     )
       .then((profile) => {
-        navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
+        if (intent === 'link') {
+          navigate('/dashboard', {replace: true});
+        } else {
+          navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
+        }
       })
       .catch((err: unknown) => {
         setError(
