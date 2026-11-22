@@ -1,42 +1,63 @@
-import {useState} from 'react';
-import {RefreshCw, Search, Trophy} from 'lucide-react';
-
-export interface RegisteredProfile {
-  rank: number;
-  username: string;
-  handle: string;
-  viewsAllTime: number;
-  viewsThisMonth: number;
-}
-
-// Structured cleanly so real database records can plug straight in later
-const REGISTERED_PROFILES: RegisteredProfile[] = [];
+import {useCallback, useEffect, useState} from 'react';
+import {Link} from 'react-router-dom';
+import {Loader2, RefreshCw, Search, Trophy} from 'lucide-react';
+import {
+  fetchLeaderboardProfiles,
+  isSupabaseConfigured,
+  ProfileRecord,
+} from '../lib/supabase';
+import {sanitizeExternalUrl} from '../lib/domain';
 
 export function LeaderboardPage() {
   const [timeframe, setTimeframe] = useState<'all' | 'month'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-
-  const filteredProfiles = REGISTERED_PROFILES.filter((profile) => {
-    if (!normalizedQuery) return true;
-    return (
-      profile.username.toLowerCase().includes(normalizedQuery) ||
-      profile.handle.toLowerCase().includes(normalizedQuery)
-    );
-  }).sort((a, b) =>
-    timeframe === 'all'
-      ? b.viewsAllTime - a.viewsAllTime
-      : b.viewsThisMonth - a.viewsThisMonth,
+  const loadLeaderboard = useCallback(
+    async (showSpinner = true) => {
+      if (!isSupabaseConfigured) {
+        setProfiles([]);
+        setLoading(false);
+        return;
+      }
+      if (showSpinner) setLoading(true);
+      setError(null);
+      try {
+        const res = await fetchLeaderboardProfiles(timeframe);
+        if (res.error) {
+          setError(res.error);
+          setProfiles([]);
+        } else {
+          setProfiles(res.data);
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [timeframe],
   );
+
+  useEffect(() => {
+    loadLeaderboard(true);
+  }, [loadLeaderboard]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    window.setTimeout(() => {
-      setRefreshing(false);
-    }, 450);
+    loadLeaderboard(false);
   };
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredProfiles = profiles.filter((profile) => {
+    if (!normalizedQuery) return true;
+    return (
+      profile.username.toLowerCase().includes(normalizedQuery) ||
+      (profile.global_name ?? '').toLowerCase().includes(normalizedQuery)
+    );
+  });
 
   return (
     <div className="min-h-[85vh] bg-[#07030d] px-4 sm:px-6 pt-32 sm:pt-36 pb-24 relative overflow-hidden">
@@ -126,6 +147,10 @@ export function LeaderboardPage() {
           </button>
         </div>
 
+        {error && (
+          <p className="mt-4 text-center text-xs text-rose-300">{error}</p>
+        )}
+
         {/* Leaderboard Table Container */}
         <div className="mt-7 overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0615]/95 shadow-[0_18px_50px_rgba(4,2,10,0.65)]">
           <div className="grid grid-cols-12 items-center px-5 sm:px-7 py-3.5 bg-gradient-to-r from-[#240f47] via-[#1c0c38] to-[#240f47] border-b border-purple-500/25 text-[11px] font-bold tracking-wider uppercase text-purple-200">
@@ -134,7 +159,11 @@ export function LeaderboardPage() {
             <div className="col-span-3 sm:col-span-2 text-right">VIEWS</div>
           </div>
 
-          {filteredProfiles.length === 0 ? (
+          {loading ? (
+            <div className="py-16 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+            </div>
+          ) : filteredProfiles.length === 0 ? (
             <div className="py-16 px-6 text-center font-mono text-xs sm:text-sm text-slate-400">
               No registered profiles found matching &quot;{searchQuery}&quot;.
             </div>
@@ -143,28 +172,61 @@ export function LeaderboardPage() {
               {filteredProfiles.map((profile, idx) => {
                 const views =
                   timeframe === 'all'
-                    ? profile.viewsAllTime
-                    : profile.viewsThisMonth;
+                    ? (profile.views ?? 0)
+                    : (profile.monthly_views ?? 0);
+                const safeAvatar = sanitizeExternalUrl(profile.avatar_url);
+                const safeDeco = sanitizeExternalUrl(
+                  profile.avatar_decoration_url,
+                );
+                const displayName = profile.global_name || profile.username;
+
                 return (
-                  <div
-                    key={profile.handle}
-                    className="grid grid-cols-12 items-center px-5 sm:px-7 py-4 text-sm hover:bg-purple-500/[0.04] transition-colors"
+                  <Link
+                    key={profile.id}
+                    to={`/${encodeURIComponent(profile.username)}`}
+                    className="grid grid-cols-12 items-center px-5 sm:px-7 py-4 text-sm hover:bg-purple-500/[0.06] transition-colors"
                   >
                     <div className="col-span-2 sm:col-span-1 font-mono font-bold text-purple-300 tabular-nums">
                       #{idx + 1}
                     </div>
-                    <div className="col-span-7 sm:col-span-9">
-                      <div className="font-semibold text-white">
-                        {profile.username}
+                    <div className="col-span-7 sm:col-span-9 flex items-center gap-3 min-w-0">
+                      <div className="relative w-10 h-10 shrink-0 flex items-center justify-center">
+                        {safeAvatar ? (
+                          <img
+                            src={safeAvatar}
+                            alt={displayName}
+                            referrerPolicy="no-referrer"
+                            className="w-8 h-8 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="w-8 h-8 rounded-full bg-purple-700 flex items-center justify-center text-xs font-bold text-white">
+                            {displayName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                        {safeDeco && (
+                          <img
+                            src={safeDeco}
+                            alt=""
+                            aria-hidden="true"
+                            referrerPolicy="no-referrer"
+                            className="pointer-events-none absolute inset-0 w-10 h-10 object-contain"
+                          />
+                        )}
                       </div>
-                      <div className="font-mono text-xs text-slate-400">
-                        clouskee.pp/{profile.handle}
+
+                      <div className="min-w-0">
+                        <div className="font-semibold text-white truncate">
+                          {displayName}
+                        </div>
+                        <div className="font-mono text-xs text-slate-400 truncate">
+                          clouskee.pp/{profile.username}
+                        </div>
                       </div>
                     </div>
                     <div className="col-span-3 sm:col-span-2 text-right font-mono text-slate-200 tabular-nums">
                       {views.toLocaleString()}
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </div>

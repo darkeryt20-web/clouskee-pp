@@ -17,8 +17,8 @@ import {
 import {DEMO_PROFILES, DemoProfile, DemoProfileModal} from './DemoProfileModal';
 import {PricingCards} from './PricingCards';
 import {
+  checkUsernameAvailability,
   sanitizeHandle,
-  validateAndCheckUsername,
 } from '../utils/usernameRegistry';
 
 const PLATFORM_STATS = [
@@ -89,6 +89,7 @@ export function HomeSections() {
   const [elapsedSec, setElapsedSec] = useState(165); // 02:45
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [bottomHandle, setBottomHandle] = useState('');
+  const [bottomChecking, setBottomChecking] = useState(false);
   const [bottomError, setBottomError] = useState('');
 
   // Subtle interactive time progression when user plays the Bento audio widget
@@ -100,15 +101,23 @@ export function HomeSections() {
     return () => window.clearInterval(timer);
   }, [isAudioPlaying]);
 
-  const handleBottomClaim = (e: FormEvent) => {
+  const handleBottomClaim = async (e: FormEvent) => {
     e.preventDefault();
-    const check = validateAndCheckUsername(bottomHandle);
-    if (!check.available) {
-      setBottomError(check.message ?? 'Please enter an available username.');
-      return;
-    }
+    if (bottomChecking) return;
+    setBottomChecking(true);
     setBottomError('');
-    navigate(`/signup?handle=${encodeURIComponent(check.cleaned)}`);
+    try {
+      const check = await checkUsernameAvailability(bottomHandle);
+      if (!check.available) {
+        setBottomError(check.message ?? 'Username is already taken');
+        return;
+      }
+      navigate(
+        `/signup?handle=${encodeURIComponent(check.cleaned)}&verified=1`,
+      );
+    } finally {
+      setBottomChecking(false);
+    }
   };
 
   return (

@@ -1,16 +1,22 @@
 import {useState} from 'react';
-import {Link, NavLink} from 'react-router-dom';
-import {ArrowRight, ExternalLink, Menu, X} from 'lucide-react';
+import {Link, NavLink, useNavigate} from 'react-router-dom';
+import {ArrowRight, ExternalLink, LogOut, Menu, User, X} from 'lucide-react';
+import {useAuth} from '../context/AuthContext';
+import {sanitizeExternalUrl} from '../lib/domain';
 
 const LOGO_URL =
   'https://res.cloudinary.com/dz7jkt7gx/image/upload/v1794018458/Clous_Kee_Logo_BW_bektaf.png';
 const DISCORD_URL = 'https://discord.gg/FDQrVXEdbK';
 
 export function Navbar() {
+  const navigate = useNavigate();
+  const {activeProfile, signOut} = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
 
   const closeMobile = () => setMobileOpen(false);
+
+  const safeAvatar = sanitizeExternalUrl(activeProfile?.avatar_url);
 
   const navLinkClass = ({isActive}: {isActive: boolean}) =>
     `whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:text-white ${
@@ -23,6 +29,12 @@ export function Navbar() {
         ? 'bg-purple-500/20 text-white'
         : 'text-slate-200 hover:text-white hover:bg-purple-500/15'
     }`;
+
+  const handleSignOut = async () => {
+    closeMobile();
+    await signOut();
+    navigate('/');
+  };
 
   return (
     <header className="fixed top-4 sm:top-5 inset-x-0 z-50 px-4 flex flex-col items-center pointer-events-none">
@@ -81,20 +93,54 @@ export function Navbar() {
           <NavLink to="/pricing" className={navLinkClass}>
             Pricing
           </NavLink>
-          <NavLink to="/login" className={navLinkClass}>
-            Login
-          </NavLink>
+          {!activeProfile && (
+            <NavLink to="/login" className={navLinkClass}>
+              Login
+            </NavLink>
+          )}
         </div>
 
-        {/* Right: CTA + Mobile Hamburger */}
+        {/* Right: Auth CTA or Active Profile + Mobile Hamburger */}
         <div className="flex items-center gap-2 shrink-0">
-          <Link
-            to="/signup"
-            className="hidden sm:inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-full bg-gradient-to-r from-[#5b21b6] via-[#7c3aed] to-[#6d28d9] hover:from-[#6d28d9] hover:to-[#8b5cf6] px-4 py-1.5 text-[12.5px] font-semibold text-white border border-purple-300/25 shadow-[0_0_20px_rgba(124,58,237,0.45)] hover:shadow-[0_0_28px_rgba(168,85,247,0.65)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
-          >
-            <span>Sign Up Free</span>
-            <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-          </Link>
+          {activeProfile ? (
+            <div className="hidden sm:flex items-center gap-1.5">
+              <Link
+                to={`/${encodeURIComponent(activeProfile.username)}`}
+                className="inline-flex items-center gap-2 whitespace-nowrap shrink-0 rounded-full bg-[#1a0f30] hover:bg-[#241542] border border-purple-400/30 pl-1.5 pr-3.5 py-1 text-[12.5px] font-semibold text-white transition-colors"
+              >
+                {safeAvatar ? (
+                  <img
+                    src={safeAvatar}
+                    alt={activeProfile.username}
+                    referrerPolicy="no-referrer"
+                    className="w-5 h-5 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center">
+                    <User className="w-3 h-3 text-white" />
+                  </span>
+                )}
+                <span>@{activeProfile.username}</span>
+              </Link>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                aria-label="Sign out"
+                title="Sign out"
+                className="w-8 h-8 rounded-full bg-[#140a26] hover:bg-rose-950/60 border border-purple-500/20 hover:border-rose-400/40 flex items-center justify-center text-slate-300 hover:text-rose-200 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/signup"
+              className="hidden sm:inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-full bg-gradient-to-r from-[#5b21b6] via-[#7c3aed] to-[#6d28d9] hover:from-[#6d28d9] hover:to-[#8b5cf6] px-4 py-1.5 text-[12.5px] font-semibold text-white border border-purple-300/25 shadow-[0_0_20px_rgba(124,58,237,0.45)] hover:shadow-[0_0_28px_rgba(168,85,247,0.65)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            >
+              <span>Sign Up Free</span>
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </Link>
+          )}
 
           <button
             type="button"
@@ -134,23 +180,42 @@ export function Navbar() {
             Pricing
           </NavLink>
           <div className="h-px bg-purple-400/15 my-1.5" />
-          <div className="flex items-center gap-2 pt-1">
-            <Link
-              to="/login"
-              onClick={closeMobile}
-              className="flex-1 text-center rounded-xl border border-purple-400/20 bg-purple-950/30 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white hover:bg-purple-900/40 transition-colors"
-            >
-              Login
-            </Link>
-            <Link
-              to="/signup"
-              onClick={closeMobile}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#8b5cf6] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(139,92,246,0.4)]"
-            >
-              <span>Sign Up Free</span>
-              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-            </Link>
-          </div>
+          {activeProfile ? (
+            <div className="flex items-center gap-2 pt-1">
+              <Link
+                to={`/${encodeURIComponent(activeProfile.username)}`}
+                onClick={closeMobile}
+                className="flex-1 text-center rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                @{activeProfile.username}
+              </Link>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="rounded-xl border border-purple-400/20 bg-purple-950/30 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white cursor-pointer"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 pt-1">
+              <Link
+                to="/login"
+                onClick={closeMobile}
+                className="flex-1 text-center rounded-xl border border-purple-400/20 bg-purple-950/30 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white hover:bg-purple-900/40 transition-colors"
+              >
+                Login
+              </Link>
+              <Link
+                to="/signup"
+                onClick={closeMobile}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#8b5cf6] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+              >
+                <span>Sign Up Free</span>
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </header>

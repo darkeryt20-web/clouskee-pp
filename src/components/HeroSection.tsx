@@ -1,30 +1,38 @@
 import {FormEvent, useRef, useState} from 'react';
 import {Link, useNavigate} from 'react-router-dom';
-import {AlertCircle, ArrowRight, Sparkles} from 'lucide-react';
+import {AlertCircle, ArrowRight, Loader2, Sparkles} from 'lucide-react';
 import {AstronautCharacter} from './AstronautCharacter';
 import {
+  checkUsernameAvailability,
   sanitizeHandle,
-  validateAndCheckUsername,
 } from '../utils/usernameRegistry';
 
 export function HeroSection() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
+  const [checking, setChecking] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleClaimSubmit = (e: FormEvent) => {
+  const handleClaimSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const check = validateAndCheckUsername(username);
+    if (checking) return;
 
-    if (!check.available) {
-      setClaimError(check.message ?? 'Username is unavailable.');
-      inputRef.current?.focus();
-      return;
-    }
-
+    setChecking(true);
     setClaimError(null);
-    navigate(`/signup?handle=${encodeURIComponent(check.cleaned)}`);
+    try {
+      const check = await checkUsernameAvailability(username);
+      if (!check.available) {
+        setClaimError(check.message ?? 'Username is already taken');
+        inputRef.current?.focus();
+        return;
+      }
+      navigate(
+        `/signup?handle=${encodeURIComponent(check.cleaned)}&verified=1`,
+      );
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -133,10 +141,20 @@ export function HeroSection() {
 
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#7c3aed] via-[#9333ea] to-[#a855f7] hover:brightness-110 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_26px_rgba(168,85,247,0.45),inset_0_1px_0_rgba(255,255,255,0.25)] hover:shadow-[0_0_34px_rgba(168,85,247,0.68)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            disabled={checking}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#7c3aed] via-[#9333ea] to-[#a855f7] hover:brightness-110 disabled:opacity-70 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_26px_rgba(168,85,247,0.45),inset_0_1px_0_rgba(255,255,255,0.25)] hover:shadow-[0_0_34px_rgba(168,85,247,0.68)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
           >
-            <span>Claim Now</span>
-            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            {checking ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Checking...</span>
+              </>
+            ) : (
+              <>
+                <span>Claim Now</span>
+                <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              </>
+            )}
           </button>
         </form>
 
