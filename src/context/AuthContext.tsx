@@ -9,6 +9,7 @@ import {
 import {useNavigate} from 'react-router-dom';
 import {
   createUserWithEmailAndPassword,
+  linkWithPopup,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -36,6 +37,7 @@ import {
 } from '../lib/discord';
 import {getRuntimeDomainInfo} from '../lib/domain';
 import {
+  checkUsernameAvailability,
   generateSafeFallbackHandle,
   markUsernameClaimed,
   sanitizeHandle,
@@ -53,6 +55,7 @@ interface AuthContextValue {
     claimedUsername?: string,
     plan?: string,
   ) => Promise<ProfileRecord>;
+  linkGoogleAccount: () => Promise<ProfileRecord>;
   signInWithEmail: (email: string, password: string) => Promise<ProfileRecord>;
   signUpWithEmail: (
     username: string,
@@ -72,6 +75,7 @@ interface AuthContextValue {
     claimedPlan: string | null,
     intent: 'auth' | 'link',
   ) => Promise<ProfileRecord>;
+  changeUsername: (newUsername: string) => Promise<ProfileRecord>;
   updateOwnProfile: (
     updates: Partial<ProfileRecord>,
   ) => Promise<ProfileRecord | null>;
@@ -151,7 +155,8 @@ export function AuthProvider({children}: {children: ReactNode}) {
   }, [setActiveProfile]);
 
   const ensureUniqueUsername = useCallback(async (desired: string) => {
-    const base = sanitizeHandle(desired) || `user${String(Date.now()).slice(-4)}`;
+    const base =
+      sanitizeHandle(desired) || `user${String(Date.now()).slice(-4)}`;
     if (!isSupabaseConfigured) return base;
 
     const firstCheck = await getProfileByUsername(base);
@@ -178,7 +183,6 @@ export function AuthProvider({children}: {children: ReactNode}) {
           user.email,
         );
         if (existing.data) {
-          // Link firebase_uid or refresh missing display fields if needed
           const updates: Partial<ProfileRecord> = {};
           if (!existing.data.firebase_uid) updates.firebase_uid = user.uid;
           if (!existing.data.global_name && user.displayName) {
@@ -218,7 +222,9 @@ export function AuthProvider({children}: {children: ReactNode}) {
       });
 
       if (created.error || !created.data) {
-        throw new Error(created.error || 'Failed to create profile in Supabase.');
+        throw new Error(
+          created.error || 'Failed to create profile in Supabase.',
+        );
       }
 
       markUsernameClaimed(created.data.username);
@@ -227,6 +233,47 @@ export function AuthProvider({children}: {children: ReactNode}) {
     },
     [ensureUniqueUsername, setActiveProfile],
   );
+
+  const linkGoogleAccount = useCallback(async () => {
+    if (!activeProfile) {
+      throw new Error('You must be signed in to link a Google account.');
+    }
+    if (!isFirebaseConfigured || !auth || !googleProvider) {
+      throw new Error(
+        'Firebase Authentication is not configured yet. Add your VITE_FIREBASE_* keys first.',
+      );
+    }
+
+    const credential = auth.currentUser
+      ? await linkWithPopup(auth.currentUser, googleProvider)
+      : await signInWithPopup(auth, googleProvider);
+
+    const user = credential.user;
+
+    const updates: Partial<ProfileRecord> = {
+      firebase_uid: user.uid,
+      email: activeProfile.email || user.email,
+      global_name:
+        activeProfile.global_name ||
+        user.displayName ||
+        activeProfile.username,
+      avatar_url: activeProfile.avatar_url || user.photoURL || null,
+    };
+
+    if (!isSupabaseConfigured || activeProfile.id.startsWith('local-')) {
+      const merged = {...activeProfile, ...updates};
+      setActiveProfile(merged);
+      return merged;
+    }
+
+    const updated = await updateProfileRecord(activeProfile.id, updates);
+    if (updated.error || !updated.data) {
+      throw new Error(updated.error || 'Failed to link Google account.');
+    }
+
+    setActiveProfile(updated.data);
+    return updated.data;
+  }, [activeProfile, setActiveProfile]);
 
   const signInWithEmail = useCallback(
     async (email: string, password: string) => {
@@ -298,7 +345,9 @@ export function AuthProvider({children}: {children: ReactNode}) {
       });
 
       if (created.error || !created.data) {
-        throw new Error(created.error || 'Failed to save profile in Supabase.');
+        throw new Error(
+          created.error || 'Failed to save profile in Supabase.',
+        );
       }
 
       markUsernameClaimed(created.data.username);
@@ -326,10 +375,9 @@ export function AuthProvider({children}: {children: ReactNode}) {
     ): Promise<ProfileRecord> => {
       const discordUser = await fetchDiscordUser(accessToken);
 
-      // Case 1: Linking Discord to an existing logged-in profile
       const currentSessionProfile = activeProfile ?? readStoredProfile();
-      if (intent === 'link' && currentSessionProfile && isSupabaseConfigured) {
-        const updated = await updateProfileRecord(currentSessionProfile.id, {
+      if (intent === 'link' && currentSessionProfile) {
+        const updates: Partial<ProfileRecord> = {
           discord_id: discordUser.discord_id,
           discord_username: discordUser.discord_username,
           discord_global_name: discordUser.discord_global_name,
@@ -341,7 +389,21 @@ export function AuthProvider({children}: {children: ReactNode}) {
           avatar_url:
             discordUser.discord_avatar || currentSessionProfile.avatar_url,
           avatar_decoration_url: discordUser.discord_avatar_decoration,
-        });
+        };
+
+        if (
+          !isSupabaseConfigured ||
+          currentSessionProfile.id.startsWith('local-')
+        ) {
+          const merged = {...currentSessionProfile, ...updates};
+          setActiveProfile(merged);
+          return merged;
+        }
+
+        const updated = await updateProfileRecord(
+          currentSessionProfile.id,
+          updates,
+        );
 
         if (updated.error || !updated.data) {
           throw new Error(updated.error || 'Failed to link Discord account.');
@@ -350,7 +412,6 @@ export function AuthProvider({children}: {children: ReactNode}) {
         return updated.data;
       }
 
-      // Case 2: Check if this Discord ID already has a Supabase profile
       if (isSupabaseConfigured) {
         const existingByDiscord = await getProfileByDiscordId(
           discordUser.discord_id,
@@ -374,7 +435,6 @@ export function AuthProvider({children}: {children: ReactNode}) {
         }
       }
 
-      // Case 3: Create a new profile from Discord OAuth2
       const desiredHandle = claimedUsername
         ? sanitizeHandle(claimedUsername)
         : await ensureUniqueUsername(discordUser.discord_username);
@@ -442,10 +502,44 @@ export function AuthProvider({children}: {children: ReactNode}) {
     [],
   );
 
+  const changeUsername = useCallback(
+    async (newUsername: string) => {
+      if (!activeProfile) {
+        throw new Error('No active profile session.');
+      }
+      const check = await checkUsernameAvailability(
+        newUsername,
+        activeProfile.id,
+      );
+      if (!check.available) {
+        throw new Error(check.message || 'Username is already taken');
+      }
+
+      if (!isSupabaseConfigured || activeProfile.id.startsWith('local-')) {
+        const updatedLocal = {...activeProfile, username: check.cleaned};
+        markUsernameClaimed(check.cleaned);
+        setActiveProfile(updatedLocal);
+        return updatedLocal;
+      }
+
+      const res = await updateProfileRecord(activeProfile.id, {
+        username: check.cleaned,
+      });
+      if (res.error || !res.data) {
+        throw new Error(res.error || 'Failed to update username.');
+      }
+
+      markUsernameClaimed(res.data.username);
+      setActiveProfile(res.data);
+      return res.data;
+    },
+    [activeProfile, setActiveProfile],
+  );
+
   const updateOwnProfile = useCallback(
     async (updates: Partial<ProfileRecord>) => {
       if (!activeProfile) return null;
-      if (!isSupabaseConfigured) {
+      if (!isSupabaseConfigured || activeProfile.id.startsWith('local-')) {
         const merged = {...activeProfile, ...updates};
         setActiveProfile(merged);
         return merged;
@@ -494,7 +588,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
           navigate(`/${encodeURIComponent(synced.username)}`, {replace: true});
         }
       } catch {
-        // Handled by callback fallback if needed
+        // Handled by callback fallback
       }
     };
 
@@ -511,11 +605,13 @@ export function AuthProvider({children}: {children: ReactNode}) {
         setActiveProfile,
         refreshActiveProfile,
         signInWithGoogle,
+        linkGoogleAccount,
         signInWithEmail,
         signUpWithEmail,
         sendResetEmail,
         startDiscordOAuth,
         completeDiscordTokenLogin,
+        changeUsername,
         updateOwnProfile,
         signOut,
       }}

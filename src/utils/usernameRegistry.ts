@@ -86,6 +86,7 @@ export function validateUsernameFormat(raw: string): UsernameCheckResult {
 
 export async function checkUsernameAvailability(
   raw: string,
+  excludeProfileId?: string,
 ): Promise<UsernameCheckResult> {
   const formatCheck = validateUsernameFormat(raw);
   if (!formatCheck.available) {
@@ -95,6 +96,7 @@ export async function checkUsernameAvailability(
   if (isSupabaseConfigured) {
     const supabaseCheck = await isUsernameAvailableInSupabase(
       formatCheck.cleaned,
+      excludeProfileId,
     );
     if (!supabaseCheck.available) {
       return {

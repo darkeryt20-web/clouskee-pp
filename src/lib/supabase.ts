@@ -33,12 +33,24 @@ export interface ProfileRecord {
   discord_avatar: string | null;
   discord_avatar_decoration: string | null;
   bio: string | null;
+  typewriter_enabled: boolean | null;
+  typewriter_texts: string[] | null;
+  bg_type: 'none' | 'image' | 'video' | null;
+  bg_url: string | null;
+  bg_opacity: number | null;
+  bg_blur: number | null;
+  card_opacity: number | null;
+  card_blur: number | null;
+  accent_color: string | null;
   theme_color: string | null;
+  font_family: string | null;
   badges: string[] | null;
   links: ProfileLinkItem[] | null;
   music_title: string | null;
   music_artist: string | null;
   music_url: string | null;
+  music_cover: string | null;
+  music_autoplay: boolean | null;
   views: number;
   monthly_views: number;
   plan: string | null;
@@ -47,6 +59,7 @@ export interface ProfileRecord {
 
 export async function isUsernameAvailableInSupabase(
   username: string,
+  excludeProfileId?: string,
 ): Promise<{available: boolean; error?: string}> {
   if (!supabase) {
     return {
@@ -54,11 +67,16 @@ export async function isUsernameAvailableInSupabase(
     };
   }
 
-  const {data, error} = await supabase
+  let query = supabase
     .from('profiles')
     .select('id, username')
-    .ilike('username', username)
-    .maybeSingle();
+    .ilike('username', username);
+
+  if (excludeProfileId && !excludeProfileId.startsWith('local-')) {
+    query = query.neq('id', excludeProfileId);
+  }
+
+  const {data, error} = await query.maybeSingle();
 
   if (error) {
     return {
@@ -159,59 +177,83 @@ export async function getProfileByDiscordId(
 export async function createProfileRecord(
   payload: Partial<ProfileRecord> & {username: string},
 ): Promise<{data: ProfileRecord | null; error?: string}> {
+  const defaultProfile: ProfileRecord = {
+    id: `local-${Date.now()}`,
+    firebase_uid: payload.firebase_uid ?? null,
+    email: payload.email ?? null,
+    username: payload.username.toLowerCase(),
+    global_name: payload.global_name ?? payload.username,
+    avatar_url: payload.avatar_url ?? null,
+    avatar_decoration_url: payload.avatar_decoration_url ?? null,
+    discord_id: payload.discord_id ?? null,
+    discord_username: payload.discord_username ?? null,
+    discord_global_name: payload.discord_global_name ?? null,
+    discord_avatar: payload.discord_avatar ?? null,
+    discord_avatar_decoration: payload.discord_avatar_decoration ?? null,
+    bio: payload.bio ?? '',
+    typewriter_enabled: payload.typewriter_enabled ?? false,
+    typewriter_texts: payload.typewriter_texts ?? [],
+    bg_type: payload.bg_type ?? 'none',
+    bg_url: payload.bg_url ?? null,
+    bg_opacity: payload.bg_opacity ?? 55,
+    bg_blur: payload.bg_blur ?? 0,
+    card_opacity: payload.card_opacity ?? 88,
+    card_blur: payload.card_blur ?? 16,
+    accent_color: payload.accent_color ?? payload.theme_color ?? '#8b5cf6',
+    theme_color: payload.theme_color ?? payload.accent_color ?? '#8b5cf6',
+    font_family: payload.font_family ?? 'Plus Jakarta Sans',
+    badges: payload.badges ?? [],
+    links: payload.links ?? [],
+    music_title: payload.music_title ?? null,
+    music_artist: payload.music_artist ?? null,
+    music_url: payload.music_url ?? null,
+    music_cover: payload.music_cover ?? null,
+    music_autoplay: payload.music_autoplay ?? false,
+    views: payload.views ?? 0,
+    monthly_views: payload.monthly_views ?? 0,
+    plan: payload.plan ?? 'free',
+  };
+
   if (!supabase) {
-    return {
-      data: {
-        id: `local-${Date.now()}`,
-        firebase_uid: payload.firebase_uid ?? null,
-        email: payload.email ?? null,
-        username: payload.username,
-        global_name: payload.global_name ?? payload.username,
-        avatar_url: payload.avatar_url ?? null,
-        avatar_decoration_url: payload.avatar_decoration_url ?? null,
-        discord_id: payload.discord_id ?? null,
-        discord_username: payload.discord_username ?? null,
-        discord_global_name: payload.discord_global_name ?? null,
-        discord_avatar: payload.discord_avatar ?? null,
-        discord_avatar_decoration: payload.discord_avatar_decoration ?? null,
-        bio: payload.bio ?? '',
-        theme_color: payload.theme_color ?? '#8b5cf6',
-        badges: payload.badges ?? [],
-        links: payload.links ?? [],
-        music_title: payload.music_title ?? null,
-        music_artist: payload.music_artist ?? null,
-        music_url: payload.music_url ?? null,
-        views: 0,
-        monthly_views: 0,
-        plan: payload.plan ?? 'free',
-      },
-    };
+    return {data: defaultProfile};
   }
 
   const {data, error} = await supabase
     .from('profiles')
     .insert({
-      firebase_uid: payload.firebase_uid ?? null,
-      email: payload.email ?? null,
-      username: payload.username.toLowerCase(),
-      global_name: payload.global_name ?? payload.username,
-      avatar_url: payload.avatar_url ?? null,
-      avatar_decoration_url: payload.avatar_decoration_url ?? null,
-      discord_id: payload.discord_id ?? null,
-      discord_username: payload.discord_username ?? null,
-      discord_global_name: payload.discord_global_name ?? null,
-      discord_avatar: payload.discord_avatar ?? null,
-      discord_avatar_decoration: payload.discord_avatar_decoration ?? null,
-      bio: payload.bio ?? '',
-      theme_color: payload.theme_color ?? '#8b5cf6',
-      badges: payload.badges ?? [],
-      links: payload.links ?? [],
-      music_title: payload.music_title ?? null,
-      music_artist: payload.music_artist ?? null,
-      music_url: payload.music_url ?? null,
-      views: payload.views ?? 0,
-      monthly_views: payload.monthly_views ?? 0,
-      plan: payload.plan ?? 'free',
+      firebase_uid: defaultProfile.firebase_uid,
+      email: defaultProfile.email,
+      username: defaultProfile.username,
+      global_name: defaultProfile.global_name,
+      avatar_url: defaultProfile.avatar_url,
+      avatar_decoration_url: defaultProfile.avatar_decoration_url,
+      discord_id: defaultProfile.discord_id,
+      discord_username: defaultProfile.discord_username,
+      discord_global_name: defaultProfile.discord_global_name,
+      discord_avatar: defaultProfile.discord_avatar,
+      discord_avatar_decoration: defaultProfile.discord_avatar_decoration,
+      bio: defaultProfile.bio,
+      typewriter_enabled: defaultProfile.typewriter_enabled,
+      typewriter_texts: defaultProfile.typewriter_texts,
+      bg_type: defaultProfile.bg_type,
+      bg_url: defaultProfile.bg_url,
+      bg_opacity: defaultProfile.bg_opacity,
+      bg_blur: defaultProfile.bg_blur,
+      card_opacity: defaultProfile.card_opacity,
+      card_blur: defaultProfile.card_blur,
+      accent_color: defaultProfile.accent_color,
+      theme_color: defaultProfile.theme_color,
+      font_family: defaultProfile.font_family,
+      badges: defaultProfile.badges,
+      links: defaultProfile.links,
+      music_title: defaultProfile.music_title,
+      music_artist: defaultProfile.music_artist,
+      music_url: defaultProfile.music_url,
+      music_cover: defaultProfile.music_cover,
+      music_autoplay: defaultProfile.music_autoplay,
+      views: defaultProfile.views,
+      monthly_views: defaultProfile.monthly_views,
+      plan: defaultProfile.plan,
     })
     .select('*')
     .single();
@@ -245,6 +287,48 @@ export async function updateProfileRecord(
   return {data: data as ProfileRecord};
 }
 
+export async function uploadProfileMedia(
+  profileId: string,
+  file: File,
+  folder: 'backgrounds' | 'audio' | 'covers' = 'backgrounds',
+): Promise<{url: string | null; error?: string}> {
+  if (!supabase) {
+    return {
+      url: null,
+      error:
+        'Supabase Storage is unavailable until VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are configured.',
+    };
+  }
+
+  const maxBytes = 50 * 1024 * 1024; // 50MB client guard
+  if (file.size > maxBytes) {
+    return {
+      url: null,
+      error: 'File exceeds 50MB limit. Use a smaller file or direct media URL.',
+    };
+  }
+
+  const safeExt = file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'bin';
+  const filePath = `${profileId}/${folder}/${Date.now()}.${safeExt}`;
+
+  const {error: uploadErr} = await supabase.storage
+    .from('profile-media')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+    });
+
+  if (uploadErr) {
+    return {url: null, error: uploadErr.message};
+  }
+
+  const {data: publicData} = supabase.storage
+    .from('profile-media')
+    .getPublicUrl(filePath);
+
+  return {url: publicData.publicUrl};
+}
+
 async function detectVisitorIp(): Promise<string> {
   try {
     const controller = new AbortController();
@@ -260,10 +344,9 @@ async function detectVisitorIp(): Promise<string> {
       }
     }
   } catch {
-    // Blocked by adblocker or network timeout — fall back below
+    // Blocked by adblocker or network timeout
   }
 
-  // Safe deterministic fallback fingerprint when public IP lookup is blocked
   const nav = typeof navigator !== 'undefined' ? navigator.userAgent : 'web';
   const tz =
     typeof Intl !== 'undefined'
@@ -307,7 +390,6 @@ export async function recordUniqueProfileView(
       // Ignore localStorage write restrictions
     }
 
-    // Return true unless the RPC explicitly returned false (duplicate IP in DB)
     return {counted: data !== false};
   } catch {
     return {counted: false};

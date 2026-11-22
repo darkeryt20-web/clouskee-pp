@@ -212,17 +212,21 @@ export function AuthPage({mode}: AuthPageProps) {
 
   const handleGoogleSignup = async () => {
     setDetailsError('');
+    setUsernameError('');
     setSignupSubmitting(true);
     try {
       const profile = await signInWithGoogle(
-        username,
+        signupStep === 'details' ? username : undefined,
         planParam === 'premium' ? 'premium' : 'free',
       );
       navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
     } catch (err: unknown) {
-      setDetailsError(
-        err instanceof Error ? err.message : 'Google signup failed.',
-      );
+      const msg = err instanceof Error ? err.message : 'Google signup failed.';
+      if (signupStep === 'details') {
+        setDetailsError(msg);
+      } else {
+        setUsernameError(msg);
+      }
     } finally {
       setSignupSubmitting(false);
     }
@@ -560,15 +564,28 @@ export function AuthPage({mode}: AuthPageProps) {
                   </span>
                 </div>
 
-                {/* Sign up with Discord */}
-                <button
-                  type="button"
-                  onClick={handleDiscordSignup}
-                  className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#4f46e5]/85 hover:bg-[#4f46e5] border border-indigo-400/30 py-2.5 px-4 text-xs font-semibold text-white transition-colors cursor-pointer"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Sign up with Discord</span>
-                </button>
+                {/* Instant Google OR Discord Signup */}
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={signupSubmitting}
+                    onClick={handleDiscordSignup}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#4f46e5]/85 hover:bg-[#4f46e5] border border-indigo-400/30 py-2.5 px-3 text-xs font-semibold text-white transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Discord</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={signupSubmitting}
+                    onClick={handleGoogleSignup}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#141926] hover:bg-[#1c2334] border border-slate-700/70 py-2.5 px-3 text-xs font-semibold text-slate-100 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    <GoogleIcon />
+                    <span>Google</span>
+                  </button>
+                </div>
               </>
             ) : (
               /* Step 2: Confirmed Available Username -> Complete with Google, Discord, or Email */
