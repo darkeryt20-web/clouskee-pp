@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    background-color: #07030d;
+    color: #f8fafc;
+    font-family: var(--font-sans);
+  }
+}
+
+@keyframes astronaut-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(-1.2deg);
+  }
+}
+
+@keyframes astronaut-shadow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 0.35;
+  }
+}
+
+.animate-astronaut-float {
+  animation: astronaut-float 4.2s ease-in-out infinite;
+}
+
+.animate-astronaut-shadow {
+  animation: astronaut-shadow 4.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-astronaut-float,
+  .animate-astronaut-shadow {
+    animation: none;
+  }
+}
