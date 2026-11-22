@@ -75,6 +75,8 @@ export interface ProfileRecord {
   custom_cursor_enabled: boolean | null;
   custom_cursor_style: CustomCursorStyle | null;
   custom_cursor_url: string | null;
+  lightning_cursor_enabled: boolean | null;
+  lightning_cursor_color: string | null;
   avatar_url: string | null;
   avatar_decoration_url: string | null;
   discord_id: string | null;
@@ -257,6 +259,8 @@ export async function createProfileRecord(
     custom_cursor_enabled: payload.custom_cursor_enabled ?? false,
     custom_cursor_style: payload.custom_cursor_style ?? 'dot_ring',
     custom_cursor_url: payload.custom_cursor_url ?? null,
+    lightning_cursor_enabled: payload.lightning_cursor_enabled ?? false,
+    lightning_cursor_color: payload.lightning_cursor_color ?? '#f43f5e',
     avatar_url: payload.avatar_url ?? null,
     avatar_decoration_url: payload.avatar_decoration_url ?? null,
     discord_id: payload.discord_id ?? null,
@@ -323,6 +327,8 @@ export async function createProfileRecord(
       custom_cursor_enabled: defaultProfile.custom_cursor_enabled,
       custom_cursor_style: defaultProfile.custom_cursor_style,
       custom_cursor_url: defaultProfile.custom_cursor_url,
+      lightning_cursor_enabled: defaultProfile.lightning_cursor_enabled,
+      lightning_cursor_color: defaultProfile.lightning_cursor_color,
       avatar_url: defaultProfile.avatar_url,
       avatar_decoration_url: defaultProfile.avatar_decoration_url,
       discord_id: defaultProfile.discord_id,

@@ -14,6 +14,7 @@ import {
 } from './SocialPresetIcons';
 import {MusicPlayerCard, normalizeMusicPosition} from './MusicPlayerCard';
 import {CustomCursorLayer, useFinePointer} from './CustomCursorLayer';
+import {LightningCursorCanvas} from './LightningCursorCanvas';
 
 const DEFAULT_DOCUMENT_TITLE =
   'Clouskee PP — Next-Gen Profile Pages & Secure File Hosting';
@@ -333,6 +334,11 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     Boolean(profile.custom_cursor_enabled) && isFinePointer;
   const customCursorStyle: CustomCursorStyle =
     profile.custom_cursor_style ?? 'dot_ring';
+  const lightningCursorEnabled = Boolean(profile.lightning_cursor_enabled);
+  const lightningCursorColor = sanitizeHexColor(
+    profile.lightning_cursor_color,
+    '#f43f5e',
+  );
 
   const animatedBrowserTitle = useAnimatedPageTitle(profile);
 
@@ -769,6 +775,14 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           </span>
         </div>
       )}
+
+      {/* Electric Lightning & Click Shockwave Canvas Overlay */}
+      <LightningCursorCanvas
+        enabled={lightningCursorEnabled}
+        color={lightningCursorColor}
+        isPreview={isPreview}
+        containerRef={containerRef}
+      />
 
       {/* Custom Cursor Overlay */}
       <CustomCursorLayer

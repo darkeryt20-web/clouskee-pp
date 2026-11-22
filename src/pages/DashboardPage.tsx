@@ -25,6 +25,7 @@ import {
   Upload,
   User,
   Video,
+  Zap,
 } from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
 import {
@@ -173,6 +174,8 @@ export function DashboardPage() {
   const [customCursorStyle, setCustomCursorStyle] =
     useState<CustomCursorStyle>('dot_ring');
   const [customCursorUrl, setCustomCursorUrl] = useState('');
+  const [lightningCursorEnabled, setLightningCursorEnabled] = useState(false);
+  const [lightningCursorColor, setLightningCursorColor] = useState('#f43f5e');
 
   // Audio state
   const [musicCardEnabled, setMusicCardEnabled] = useState(true);
@@ -263,6 +266,10 @@ export function DashboardPage() {
     setCustomCursorEnabled(Boolean(activeProfile.custom_cursor_enabled));
     setCustomCursorStyle(activeProfile.custom_cursor_style ?? 'dot_ring');
     setCustomCursorUrl(activeProfile.custom_cursor_url ?? '');
+    setLightningCursorEnabled(Boolean(activeProfile.lightning_cursor_enabled));
+    setLightningCursorColor(
+      sanitizeHexColor(activeProfile.lightning_cursor_color, '#f43f5e'),
+    );
 
     setMusicCardEnabled(activeProfile.music_card_enabled !== false);
     setMusicTitle(activeProfile.music_title ?? '');
@@ -339,6 +346,8 @@ export function DashboardPage() {
       custom_cursor_enabled: customCursorEnabled,
       custom_cursor_style: customCursorStyle,
       custom_cursor_url: customCursorUrl.trim() || null,
+      lightning_cursor_enabled: lightningCursorEnabled,
+      lightning_cursor_color: lightningCursorColor,
       avatar_url: avatarUrl.trim() || null,
       bio,
       typewriter_enabled: typewriterEnabled,
@@ -387,6 +396,8 @@ export function DashboardPage() {
     customCursorEnabled,
     customCursorStyle,
     customCursorUrl,
+    lightningCursorEnabled,
+    lightningCursorColor,
     avatarUrl,
     bio,
     typewriterEnabled,
@@ -689,6 +700,14 @@ export function DashboardPage() {
       return;
     }
 
+    const cleanLightningColor = lightningCursorColor.trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(cleanLightningColor)) {
+      setErrorMessage(
+        'Lightning Cursor color must be a valid 6-digit hex code (e.g. #f43f5e).',
+      );
+      return;
+    }
+
     let safeCursorUrl: string | null = null;
     if (customCursorUrl.trim()) {
       const checked = sanitizeExternalUrl(customCursorUrl);
@@ -726,6 +745,8 @@ export function DashboardPage() {
         custom_cursor_enabled: customCursorEnabled,
         custom_cursor_style: customCursorStyle,
         custom_cursor_url: safeCursorUrl,
+        lightning_cursor_enabled: lightningCursorEnabled,
+        lightning_cursor_color: cleanLightningColor,
         avatar_url: safeAvatar,
         bio: bio.trim(),
         typewriter_enabled: typewriterEnabled,
@@ -1719,6 +1740,124 @@ export function DashboardPage() {
                             </label>
                           </div>
                         )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Electric Lightning Cursor Controls */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                          <Zap className="w-4 h-4 text-rose-400" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-white">
+                            Lightning Cursor
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Trailing electric lightning bolts on hover and radial shockwave bursts on click.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={lightningCursorEnabled}
+                        onClick={() => setLightningCursorEnabled((p) => !p)}
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                          lightningCursorEnabled
+                            ? 'bg-rose-500/20 border-rose-400/60 text-white shadow-[0_0_18px_rgba(244,63,94,0.28)]'
+                            : 'bg-[#0b0615] border-purple-500/25 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        <Zap
+                          className={`w-3.5 h-3.5 ${
+                            lightningCursorEnabled
+                              ? 'text-rose-400'
+                              : 'text-slate-400'
+                          }`}
+                        />
+                        <span>
+                          Lightning Cursor: {lightningCursorEnabled ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {lightningCursorEnabled && (
+                      <div className="space-y-3 pt-3 border-t border-purple-500/15">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <label
+                            htmlFor="dash-lightning-color"
+                            className="text-xs font-medium text-slate-300"
+                          >
+                            Lightning Bolt Color
+                          </label>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {[
+                              {label: 'Crimson', hex: '#f43f5e'},
+                              {label: 'Violet', hex: '#8b5cf6'},
+                              {label: 'Cyan', hex: '#06b6d4'},
+                              {label: 'Amber', hex: '#f59e0b'},
+                            ].map((preset) => (
+                              <button
+                                key={preset.hex}
+                                type="button"
+                                onClick={() =>
+                                  setLightningCursorColor(preset.hex)
+                                }
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                                  lightningCursorColor.toLowerCase() ===
+                                  preset.hex
+                                    ? 'bg-white/10 border-white/40 text-white'
+                                    : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full"
+                                  style={{backgroundColor: preset.hex}}
+                                />
+                                <span>{preset.label}</span>
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLightningCursorColor(
+                                  sanitizeHexColor(accentColor, '#8b5cf6'),
+                                )
+                              }
+                              className="rounded-lg bg-purple-950/60 border border-purple-500/30 px-2 py-1 text-[11px] font-medium text-purple-200 hover:text-white cursor-pointer"
+                            >
+                              Match Accent
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="color"
+                            aria-label="Pick lightning cursor color"
+                            value={sanitizeHexColor(
+                              lightningCursorColor,
+                              '#f43f5e',
+                            )}
+                            onChange={(e) =>
+                              setLightningCursorColor(e.target.value)
+                            }
+                            className="w-10 h-9 rounded-lg bg-[#0b0615] border border-purple-500/25 p-0.5 cursor-pointer"
+                          />
+                          <input
+                            id="dash-lightning-color"
+                            type="text"
+                            value={lightningCursorColor}
+                            onChange={(e) =>
+                              setLightningCursorColor(e.target.value)
+                            }
+                            placeholder="#f43f5e"
+                            className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 focus:border-purple-400 px-3 py-2 font-mono text-xs text-white focus:outline-none"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
