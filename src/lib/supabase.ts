@@ -35,6 +35,14 @@ export interface ProfileLinkItem {
   customIconUrl?: string;
 }
 
+export type MusicCardPosition =
+  | 'profile_top'
+  | 'profile_bottom'
+  | 'page_top_left'
+  | 'page_top_right'
+  | 'page_bottom_left'
+  | 'page_bottom_right';
+
 export interface ProfileRecord {
   id: string;
   firebase_uid: string | null;
@@ -51,6 +59,10 @@ export interface ProfileRecord {
   bio: string | null;
   typewriter_enabled: boolean | null;
   typewriter_texts: string[] | null;
+  click_to_enter_enabled: boolean | null;
+  click_to_enter_text: string | null;
+  show_profile_link: boolean | null;
+  show_views_count: boolean | null;
   bg_type: 'none' | 'image' | 'video' | null;
   bg_url: string | null;
   bg_opacity: number | null;
@@ -67,6 +79,14 @@ export interface ProfileRecord {
   music_url: string | null;
   music_cover: string | null;
   music_autoplay: boolean | null;
+  music_position: MusicCardPosition | null;
+  music_style: number | null;
+  music_show_cover: boolean | null;
+  music_show_progress: boolean | null;
+  music_show_countdown: boolean | null;
+  music_show_controls: boolean | null;
+  music_show_title: boolean | null;
+  music_show_artist: boolean | null;
   views: number;
   monthly_views: number;
   plan: string | null;
@@ -209,6 +229,10 @@ export async function createProfileRecord(
     bio: payload.bio ?? '',
     typewriter_enabled: payload.typewriter_enabled ?? false,
     typewriter_texts: payload.typewriter_texts ?? [],
+    click_to_enter_enabled: payload.click_to_enter_enabled ?? true,
+    click_to_enter_text: payload.click_to_enter_text ?? 'Click to Enter',
+    show_profile_link: payload.show_profile_link ?? false,
+    show_views_count: payload.show_views_count ?? true,
     bg_type: payload.bg_type ?? 'none',
     bg_url: payload.bg_url ?? null,
     bg_opacity: payload.bg_opacity ?? 55,
@@ -225,6 +249,14 @@ export async function createProfileRecord(
     music_url: payload.music_url ?? null,
     music_cover: payload.music_cover ?? null,
     music_autoplay: payload.music_autoplay ?? false,
+    music_position: payload.music_position ?? 'profile_bottom',
+    music_style: payload.music_style ?? 1,
+    music_show_cover: payload.music_show_cover ?? true,
+    music_show_progress: payload.music_show_progress ?? true,
+    music_show_countdown: payload.music_show_countdown ?? true,
+    music_show_controls: payload.music_show_controls ?? true,
+    music_show_title: payload.music_show_title ?? true,
+    music_show_artist: payload.music_show_artist ?? true,
     views: payload.views ?? 0,
     monthly_views: payload.monthly_views ?? 0,
     plan: payload.plan ?? 'free',
@@ -251,6 +283,10 @@ export async function createProfileRecord(
       bio: defaultProfile.bio,
       typewriter_enabled: defaultProfile.typewriter_enabled,
       typewriter_texts: defaultProfile.typewriter_texts,
+      click_to_enter_enabled: defaultProfile.click_to_enter_enabled,
+      click_to_enter_text: defaultProfile.click_to_enter_text,
+      show_profile_link: defaultProfile.show_profile_link,
+      show_views_count: defaultProfile.show_views_count,
       bg_type: defaultProfile.bg_type,
       bg_url: defaultProfile.bg_url,
       bg_opacity: defaultProfile.bg_opacity,
@@ -267,6 +303,14 @@ export async function createProfileRecord(
       music_url: defaultProfile.music_url,
       music_cover: defaultProfile.music_cover,
       music_autoplay: defaultProfile.music_autoplay,
+      music_position: defaultProfile.music_position,
+      music_style: defaultProfile.music_style,
+      music_show_cover: defaultProfile.music_show_cover,
+      music_show_progress: defaultProfile.music_show_progress,
+      music_show_countdown: defaultProfile.music_show_countdown,
+      music_show_controls: defaultProfile.music_show_controls,
+      music_show_title: defaultProfile.music_show_title,
+      music_show_artist: defaultProfile.music_show_artist,
       views: defaultProfile.views,
       monthly_views: defaultProfile.monthly_views,
       plan: defaultProfile.plan,

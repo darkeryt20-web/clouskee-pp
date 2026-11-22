@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
 import {
+  MusicCardPosition,
   ProfileLinkItem,
   ProfileRecord,
   SocialPresetKey,
@@ -40,6 +41,7 @@ import {
   sanitizeFontFamily,
   sanitizeHexColor,
 } from '../components/ProfileView';
+import {MUSIC_POSITIONS, MUSIC_STYLES} from '../components/MusicPlayerCard';
 import {
   getPresetMeta,
   inferPresetFromLink,
@@ -119,6 +121,9 @@ export function DashboardPage() {
   const [bio, setBio] = useState('');
   const [typewriterEnabled, setTypewriterEnabled] = useState(false);
   const [typewriterTexts, setTypewriterTexts] = useState<string[]>([]);
+  const [clickToEnterEnabled, setClickToEnterEnabled] = useState(true);
+  const [clickToEnterText, setClickToEnterText] = useState('Click to Enter');
+  const [showViewsCount, setShowViewsCount] = useState(true);
 
   // Appearance & Background state
   const [bgType, setBgType] = useState<'none' | 'image' | 'video'>('none');
@@ -136,6 +141,15 @@ export function DashboardPage() {
   const [musicUrl, setMusicUrl] = useState('');
   const [musicCover, setMusicCover] = useState('');
   const [musicAutoplay, setMusicAutoplay] = useState(false);
+  const [musicPosition, setMusicPosition] =
+    useState<MusicCardPosition>('profile_bottom');
+  const [musicStyle, setMusicStyle] = useState<number>(1);
+  const [musicShowCover, setMusicShowCover] = useState(true);
+  const [musicShowProgress, setMusicShowProgress] = useState(true);
+  const [musicShowCountdown, setMusicShowCountdown] = useState(true);
+  const [musicShowControls, setMusicShowControls] = useState(true);
+  const [musicShowTitle, setMusicShowTitle] = useState(true);
+  const [musicShowArtist, setMusicShowArtist] = useState(true);
 
   // Links state
   const [links, setLinks] = useState<ProfileLinkItem[]>([]);
@@ -166,6 +180,11 @@ export function DashboardPage() {
         ? [...activeProfile.typewriter_texts]
         : [],
     );
+    setClickToEnterEnabled(activeProfile.click_to_enter_enabled !== false);
+    setClickToEnterText(
+      activeProfile.click_to_enter_text?.trim() || 'Click to Enter',
+    );
+    setShowViewsCount(activeProfile.show_views_count !== false);
 
     setBgType(activeProfile.bg_type ?? 'none');
     setBgUrl(activeProfile.bg_url ?? '');
@@ -185,6 +204,14 @@ export function DashboardPage() {
     setMusicUrl(activeProfile.music_url ?? '');
     setMusicCover(activeProfile.music_cover ?? '');
     setMusicAutoplay(Boolean(activeProfile.music_autoplay));
+    setMusicPosition(activeProfile.music_position ?? 'profile_bottom');
+    setMusicStyle(Math.min(5, Math.max(1, Number(activeProfile.music_style || 1))));
+    setMusicShowCover(activeProfile.music_show_cover !== false);
+    setMusicShowProgress(activeProfile.music_show_progress !== false);
+    setMusicShowCountdown(activeProfile.music_show_countdown !== false);
+    setMusicShowControls(activeProfile.music_show_controls !== false);
+    setMusicShowTitle(activeProfile.music_show_title !== false);
+    setMusicShowArtist(activeProfile.music_show_artist !== false);
 
     setLinks(
       Array.isArray(activeProfile.links)
@@ -239,6 +266,10 @@ export function DashboardPage() {
       bio,
       typewriter_enabled: typewriterEnabled,
       typewriter_texts: typewriterTexts,
+      click_to_enter_enabled: clickToEnterEnabled,
+      click_to_enter_text: clickToEnterText.trim() || 'Click to Enter',
+      show_profile_link: false,
+      show_views_count: showViewsCount,
       bg_type: bgType,
       bg_url: bgUrl.trim() || null,
       bg_opacity: bgOpacity,
@@ -253,6 +284,14 @@ export function DashboardPage() {
       music_url: musicUrl.trim() || null,
       music_cover: musicCover.trim() || null,
       music_autoplay: musicAutoplay,
+      music_position: musicPosition,
+      music_style: musicStyle,
+      music_show_cover: musicShowCover,
+      music_show_progress: musicShowProgress,
+      music_show_countdown: musicShowCountdown,
+      music_show_controls: musicShowControls,
+      music_show_title: musicShowTitle,
+      music_show_artist: musicShowArtist,
       links,
     };
   }, [
@@ -263,6 +302,9 @@ export function DashboardPage() {
     bio,
     typewriterEnabled,
     typewriterTexts,
+    clickToEnterEnabled,
+    clickToEnterText,
+    showViewsCount,
     bgType,
     bgUrl,
     bgOpacity,
@@ -276,6 +318,14 @@ export function DashboardPage() {
     musicUrl,
     musicCover,
     musicAutoplay,
+    musicPosition,
+    musicStyle,
+    musicShowCover,
+    musicShowProgress,
+    musicShowCountdown,
+    musicShowControls,
+    musicShowTitle,
+    musicShowArtist,
     links,
   ]);
 
@@ -544,6 +594,10 @@ export function DashboardPage() {
         bio: bio.trim(),
         typewriter_enabled: typewriterEnabled,
         typewriter_texts: cleanedTypewriterLines,
+        click_to_enter_enabled: clickToEnterEnabled,
+        click_to_enter_text: clickToEnterText.trim() || 'Click to Enter',
+        show_profile_link: false,
+        show_views_count: showViewsCount,
         bg_type: bgType,
         bg_url: safeBg,
         bg_opacity: bgOpacity,
@@ -558,6 +612,14 @@ export function DashboardPage() {
         music_url: safeMusic,
         music_cover: safeCover,
         music_autoplay: musicAutoplay,
+        music_position: musicPosition,
+        music_style: musicStyle,
+        music_show_cover: musicShowCover,
+        music_show_progress: musicShowProgress,
+        music_show_countdown: musicShowCountdown,
+        music_show_controls: musicShowControls,
+        music_show_title: musicShowTitle,
+        music_show_artist: musicShowArtist,
         links: sanitizedLinks,
       });
       setSaveMessage('All profile changes saved and published.');
@@ -890,6 +952,82 @@ export function DashboardPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Click to Enter Overlay & Views Counter Controls */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-white">
+                          Click to Enter Gate Overlay
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Show clean centered text before revealing your page &amp; starting audio.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={clickToEnterEnabled}
+                        onClick={() => setClickToEnterEnabled((p) => !p)}
+                        className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                          clickToEnterEnabled ? 'bg-purple-600' : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`block w-5 h-5 rounded-full bg-white transition-transform ${
+                            clickToEnterEnabled
+                              ? 'translate-x-5'
+                              : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {clickToEnterEnabled && (
+                      <div>
+                        <label
+                          htmlFor="dash-enter-text"
+                          className="block text-[11px] font-medium text-slate-300 mb-1.5"
+                        >
+                          Entry Overlay Plain Text
+                        </label>
+                        <input
+                          id="dash-enter-text"
+                          type="text"
+                          value={clickToEnterText}
+                          onChange={(e) => setClickToEnterText(e.target.value)}
+                          placeholder="Click to Enter"
+                          className="w-full rounded-xl bg-[#0b0615] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2 text-xs sm:text-sm text-white focus:outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <div className="pt-3 border-t border-purple-500/15 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-white">
+                          Show Views Count (Bottom-Left)
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Display the eye icon &amp; unique view count at the bottom-left of your card.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={showViewsCount}
+                        onClick={() => setShowViewsCount((p) => !p)}
+                        className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                          showViewsCount ? 'bg-purple-600' : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`block w-5 h-5 rounded-full bg-white transition-transform ${
+                            showViewsCount ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1221,8 +1359,7 @@ export function DashboardPage() {
                         Auto-play Audio on Profile Load
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        Starts playback automatically when the visitor&apos;s
-                        browser allows media autoplay.
+                        Starts automatically when Click to Enter is off (or immediately upon entering).
                       </p>
                     </div>
                     <button
@@ -1230,7 +1367,7 @@ export function DashboardPage() {
                       role="switch"
                       aria-checked={musicAutoplay}
                       onClick={() => setMusicAutoplay((p) => !p)}
-                      className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer ${
+                      className={`w-11 h-6 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
                         musicAutoplay ? 'bg-purple-600' : 'bg-slate-700'
                       }`}
                     >
@@ -1240,6 +1377,125 @@ export function DashboardPage() {
                         }`}
                       />
                     </button>
+                  </div>
+
+                  {/* Music Card Position (6 Positions) */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-2.5">
+                    <p className="text-xs font-semibold text-white">
+                      Music Card Position
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {MUSIC_POSITIONS.map((pos) => {
+                        const selected = musicPosition === pos.id;
+                        return (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() => setMusicPosition(pos.id)}
+                            className={`rounded-xl border px-3 py-2 text-xs font-medium transition-all cursor-pointer ${
+                              selected
+                                ? 'bg-purple-600/25 border-purple-400 text-white'
+                                : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Music Card Style (5 Styles) */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-2.5">
+                    <p className="text-xs font-semibold text-white">
+                      Music Card Visual Style
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {MUSIC_STYLES.map((st) => {
+                        const selected = musicStyle === st.id;
+                        return (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => setMusicStyle(st.id)}
+                            className={`rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
+                              selected
+                                ? 'bg-purple-600/25 border-purple-400 text-white'
+                                : 'bg-[#0b0615] border-purple-500/20 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Individual On/Off Toggles for Music Card Elements */}
+                  <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-3">
+                    <p className="text-xs font-semibold text-white">
+                      Music Card Elements
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {(
+                        [
+                          {
+                            label: 'Cover Image',
+                            checked: musicShowCover,
+                            toggle: () => setMusicShowCover((v) => !v),
+                          },
+                          {
+                            label: 'Real-Time Progress Bar',
+                            checked: musicShowProgress,
+                            toggle: () => setMusicShowProgress((v) => !v),
+                          },
+                          {
+                            label: 'Countdown Timer (-mm:ss)',
+                            checked: musicShowCountdown,
+                            toggle: () => setMusicShowCountdown((v) => !v),
+                          },
+                          {
+                            label: 'Play / Pause Controls',
+                            checked: musicShowControls,
+                            toggle: () => setMusicShowControls((v) => !v),
+                          },
+                          {
+                            label: 'Track Title',
+                            checked: musicShowTitle,
+                            toggle: () => setMusicShowTitle((v) => !v),
+                          },
+                          {
+                            label: 'Artist Name',
+                            checked: musicShowArtist,
+                            toggle: () => setMusicShowArtist((v) => !v),
+                          },
+                        ] as const
+                      ).map((item) => (
+                        <div
+                          key={item.label}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0615] border border-purple-500/15 px-3 py-2"
+                        >
+                          <span className="text-xs text-slate-200">
+                            {item.label}
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={item.checked}
+                            onClick={item.toggle}
+                            className={`w-9 h-5 rounded-full transition-colors p-0.5 cursor-pointer shrink-0 ${
+                              item.checked ? 'bg-purple-600' : 'bg-slate-700'
+                            }`}
+                          >
+                            <span
+                              className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                                item.checked ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

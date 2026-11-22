@@ -1,12 +1,13 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {Eye, Music, Pause, Play} from 'lucide-react';
-import {ProfileRecord} from '../lib/supabase';
+import {Eye} from 'lucide-react';
+import {MusicCardPosition, ProfileRecord} from '../lib/supabase';
 import {getRuntimeDomainInfo, sanitizeExternalUrl} from '../lib/domain';
 import {
   getPresetMeta,
   inferPresetFromLink,
   SocialPresetIcon,
 } from './SocialPresetIcons';
+import {MusicPlayerCard} from './MusicPlayerCard';
 
 export const ALLOWED_PROFILE_FONTS = [
   'Plus Jakarta Sans',
@@ -105,7 +106,17 @@ interface ProfileViewProps {
 
 export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   const {host} = getRuntimeDomainInfo();
+  const clickToEnterEnabled = profile.click_to_enter_enabled !== false;
+  const clickToEnterText =
+    profile.click_to_enter_text?.trim() || 'Click to Enter';
+
+  const [hasEntered, setHasEntered] = useState(
+    () => isPreview || !clickToEnterEnabled,
+  );
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -136,6 +147,25 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     ? profile.typewriter_texts
     : [];
 
+  const showProfileLink = profile.show_profile_link === true;
+  const showViewsCount = profile.show_views_count !== false;
+  const musicPosition: MusicCardPosition =
+    profile.music_position ?? 'profile_bottom';
+  const hasMusicCard = Boolean(
+    profile.music_title ||
+      profile.music_artist ||
+      safeMusicUrl ||
+      safeMusicCover,
+  );
+
+  useEffect(() => {
+    if (isPreview || !clickToEnterEnabled) {
+      setHasEntered(true);
+    } else {
+      setHasEntered(false);
+    }
+  }, [isPreview, clickToEnterEnabled, profile.username]);
+
   // Always enforce muted=true on background videos on mount/load
   useEffect(() => {
     if (profile.bg_type === 'video' && videoRef.current) {
@@ -144,15 +174,39 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     }
   }, [profile.bg_type, safeBgUrl]);
 
+  // Reset audio progress when music URL changes
   useEffect(() => {
-    if (isPreview || !profile.music_autoplay || !safeMusicUrl) return;
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+  }, [safeMusicUrl]);
+
+  // Autoplay when gate is disabled and music_autoplay is on
+  useEffect(() => {
+    if (isPreview || clickToEnterEnabled || !profile.music_autoplay || !safeMusicUrl) {
+      return;
+    }
     const audioEl = audioRef.current;
     if (!audioEl) return;
     audioEl
       .play()
       .then(() => setIsPlaying(true))
       .catch(() => setIsPlaying(false));
-  }, [isPreview, profile.music_autoplay, safeMusicUrl]);
+  }, [isPreview, clickToEnterEnabled, profile.music_autoplay, safeMusicUrl]);
+
+  const handleEnterSite = () => {
+    setHasEntered(true);
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+    }
+    if (safeMusicUrl && audioRef.current) {
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    }
+  };
 
   const toggleAudio = async () => {
     if (safeMusicUrl && audioRef.current) {
@@ -172,14 +226,69 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     }
   };
 
+  const handleSeek = (nextTime: number) => {
+    setCurrentTime(nextTime);
+    if (audioRef.current) {
+      audioRef.current.currentTime = nextTime;
+    }
+  };
+
   const bgPositionClass = isPreview ? 'absolute inset-0' : 'fixed inset-0';
+  const isCornerTop =
+    hasMusicCard &&
+    (musicPosition === 'page_top_left' || musicPosition === 'page_top_right');
+  const isCornerBottom =
+    hasMusicCard &&
+    (musicPosition === 'page_bottom_left' ||
+      musicPosition === 'page_bottom_right');
+
+  const cornerPlacementClass: Record<
+    Exclude<MusicCardPosition, 'profile_top' | 'profile_bottom'>,
+    string
+  > = {
+    page_top_left: isPreview
+      ? 'absolute top-3 left-3'
+      : 'fixed top-4 left-4',
+    page_top_right: isPreview
+      ? 'absolute top-3 right-3'
+      : 'fixed top-4 right-4',
+    page_bottom_left: isPreview
+      ? 'absolute bottom-3 left-3'
+      : 'fixed bottom-4 left-4',
+    page_bottom_right: isPreview
+      ? 'absolute bottom-3 right-3'
+      : 'fixed bottom-4 right-4',
+  };
+
+  const renderMusicCard = (extraClass = '') => {
+    if (!hasMusicCard) return null;
+    return (
+      <MusicPlayerCard
+        profile={profile}
+        safeMusicCover={safeMusicCover}
+        accentColor={accentColor}
+        cardOpacity={cardOpacity}
+        cardBlur={cardBlur}
+        isPlaying={isPlaying}
+        currentTime={currentTime}
+        duration={duration}
+        onTogglePlay={toggleAudio}
+        onSeek={handleSeek}
+        className={extraClass}
+      />
+    );
+  };
 
   return (
     <div
       className={`${
         isPreview
-          ? 'relative min-h-[580px] rounded-b-2xl overflow-hidden px-4 py-8'
-          : 'relative min-h-screen overflow-hidden px-4 sm:px-6 py-16'
+          ? `relative min-h-[600px] rounded-b-2xl overflow-hidden px-4 ${
+              isCornerTop ? 'pt-24' : 'py-8'
+            } ${isCornerBottom ? 'pb-24' : 'py-8'}`
+          : `relative min-h-screen overflow-hidden px-4 sm:px-6 ${
+              isCornerTop ? 'pt-28 sm:pt-20' : 'py-14'
+            } ${isCornerBottom ? 'pb-28 sm:pb-20' : 'py-14'}`
       } bg-[#09090c] flex items-center justify-center`}
       style={{fontFamily: `"${fontFamily}", sans-serif`}}
     >
@@ -214,7 +323,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
         />
       )}
 
-      {/* Clean Neutral Dark Overlay (No Purple Blur Tint) */}
+      {/* Clean Neutral Dark Overlay */}
       <div
         aria-hidden="true"
         className={`${bgPositionClass} pointer-events-none`}
@@ -223,7 +332,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             ? `rgba(8, 8, 12, ${bgOpacity})`
             : 'transparent',
           backgroundImage: !hasCustomMediaBg
-            ? `radial-gradient(circle at 50% 25%, ${accentColor}22 0%, rgba(9, 9, 12, 0) 68%)`
+            ? `radial-gradient(circle at 50% 25%, ${accentColor}20 0%, rgba(9, 9, 12, 0) 68%)`
             : undefined,
         }}
       />
@@ -233,12 +342,45 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           ref={audioRef}
           src={safeMusicUrl}
           loop
+          preload="metadata"
+          onLoadedMetadata={(e) => {
+            const el = e.currentTarget;
+            if (Number.isFinite(el.duration)) setDuration(el.duration);
+          }}
+          onDurationChange={(e) => {
+            const el = e.currentTarget;
+            if (Number.isFinite(el.duration)) setDuration(el.duration);
+          }}
+          onTimeUpdate={(e) => {
+            setCurrentTime(e.currentTarget.currentTime);
+          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
           onEnded={() => setIsPlaying(false)}
         />
       )}
 
+      {/* Page-Corner Music Card Positions */}
+      {hasMusicCard &&
+        musicPosition !== 'profile_top' &&
+        musicPosition !== 'profile_bottom' && (
+          <div
+            className={`${cornerPlacementClass[musicPosition]} z-30 ${
+              isPreview
+                ? 'w-[245px] max-w-[calc(100%-1.5rem)]'
+                : 'w-[calc(100vw-2rem)] sm:w-80'
+            }`}
+          >
+            {renderMusicCard()}
+          </div>
+        )}
+
       {/* Main Profile Neutral Glass Card */}
-      <div className={`relative z-10 w-full ${isPreview ? 'max-w-sm' : 'max-w-lg'} mx-auto`}>
+      <div
+        className={`relative z-10 w-full ${
+          isPreview ? 'max-w-sm' : 'max-w-lg'
+        } mx-auto`}
+      >
         <div
           className="rounded-3xl border p-6 sm:p-8 transition-all"
           style={{
@@ -249,6 +391,9 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             boxShadow: '0 24px 70px rgba(0, 0, 0, 0.55)',
           }}
         >
+          {/* Music Card Position: Top of Profile Card */}
+          {musicPosition === 'profile_top' && renderMusicCard('mb-6')}
+
           {/* Avatar + Discord Avatar Decoration Overlay */}
           <div className="flex flex-col items-center text-center">
             <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
@@ -287,18 +432,18 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               {displayName}
             </h1>
 
-            <div className="mt-1.5 flex items-center gap-2 text-xs font-mono text-zinc-200">
-              <span style={{color: accentColor}}>@{profile.username}</span>
-              <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1 text-zinc-300 tabular-nums">
-                <Eye className="w-3.5 h-3.5" style={{color: accentColor}} />
-                <span>{(profile.views ?? 0).toLocaleString()} views</span>
-              </span>
-            </div>
-
-            <p className="mt-1 font-mono text-[11px] text-zinc-400">
-              {host}/{profile.username}
+            <p
+              className="mt-1 text-xs font-mono"
+              style={{color: accentColor}}
+            >
+              @{profile.username}
             </p>
+
+            {showProfileLink && (
+              <p className="mt-1 font-mono text-[11px] text-zinc-400">
+                {host}/{profile.username}
+              </p>
+            )}
 
             {/* Badges */}
             {badges.length > 0 && (
@@ -328,54 +473,6 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               )
             )}
           </div>
-
-          {/* Music Player Widget */}
-          {(profile.music_title ||
-            profile.music_artist ||
-            safeMusicUrl ||
-            safeMusicCover) && (
-            <div className="mt-6 rounded-2xl bg-black/45 border border-white/10 px-3.5 py-2.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                {safeMusicCover ? (
-                  <img
-                    src={safeMusicCover}
-                    alt={profile.music_title || 'Track cover'}
-                    referrerPolicy="no-referrer"
-                    className="w-9 h-9 rounded-lg object-cover shrink-0 border border-white/10"
-                  />
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={toggleAudio}
-                  aria-label={isPlaying ? 'Pause music' : 'Play music'}
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white shrink-0 cursor-pointer transition-transform hover:scale-105"
-                  style={{backgroundColor: accentColor}}
-                >
-                  {isPlaying ? (
-                    <Pause className="w-3.5 h-3.5" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5 ml-0.5" />
-                  )}
-                </button>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm font-semibold text-white truncate">
-                    {profile.music_title || 'Profile Track'}
-                  </p>
-                  <p
-                    className="text-[11px] truncate"
-                    style={{color: accentColor}}
-                  >
-                    {profile.music_artist || displayName}
-                  </p>
-                </div>
-              </div>
-              <Music
-                className="w-4 h-4 shrink-0"
-                style={{color: accentColor}}
-              />
-            </div>
-          )}
 
           {/* Social Links — Clean Horizontal Icon/Logo-Only Row */}
           {links.length > 0 && (
@@ -415,8 +512,42 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               })}
             </div>
           )}
+
+          {/* Music Card Position: Bottom of Profile Card */}
+          {musicPosition === 'profile_bottom' && renderMusicCard('mt-6')}
+
+          {/* Views Count at Bottom-Left of Profile Card */}
+          {showViewsCount && (
+            <div className="mt-6 flex items-center justify-start">
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-300 tabular-nums">
+                <Eye className="w-3.5 h-3.5" style={{color: accentColor}} />
+                <span>{(profile.views ?? 0).toLocaleString()}</span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Full-Screen "Click to Enter" Normal Plain Text Overlay (Public Profile Only) */}
+      {!isPreview && clickToEnterEnabled && !hasEntered && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={handleEnterSite}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleEnterSite();
+            }
+          }}
+          aria-label={clickToEnterText}
+          className="fixed inset-0 z-50 bg-black/82 backdrop-blur-md flex items-center justify-center px-6 cursor-pointer select-none"
+        >
+          <span className="text-base sm:text-lg font-medium tracking-wide text-white/90 hover:text-white transition-opacity">
+            {clickToEnterText}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
