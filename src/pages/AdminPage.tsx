@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Link} from 'react-router-dom';
 import {
   Activity,
+  AlertCircle,
   BarChart3,
   Calendar,
   Check,
@@ -175,6 +176,12 @@ export function AdminPage() {
       }
 
       showSuccessToast(`Updated access for @${user.username}`);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unexpected error updating user access.',
+      );
     } finally {
       setSavingUserId(null);
     }
@@ -270,14 +277,26 @@ export function AdminPage() {
 
         {/* Feedback Toast / Error */}
         {toast && (
-          <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-950/50 border border-emerald-500/35 px-4 py-2.5 text-xs font-semibold text-emerald-200">
-            <Check className="w-4 h-4 text-emerald-400" />
+          <div className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-xl bg-emerald-950/95 backdrop-blur-md border border-emerald-500/45 px-4 py-3 text-xs font-semibold text-emerald-100 shadow-[0_14px_40px_rgba(0,0,0,0.65)]">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{toast}</span>
           </div>
         )}
         {error && (
-          <div className="rounded-xl bg-rose-950/50 border border-rose-500/35 px-4 py-3 text-xs font-medium text-rose-200">
-            {error}
+          <div
+            role="alert"
+            className="fixed bottom-6 right-6 z-50 max-w-md flex items-start gap-2.5 rounded-xl bg-rose-950/95 backdrop-blur-md border border-rose-500/45 px-4 py-3 text-xs font-medium text-rose-100 shadow-[0_14px_40px_rgba(0,0,0,0.7)]"
+          >
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span className="flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              aria-label="Dismiss error"
+              className="text-rose-300 hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
@@ -751,6 +770,35 @@ export function AdminPage() {
           )}
         </div>
       </div>
+      {/* Floating Status Toast (always visible while scrolled) */}
+      {(toast || error) && (
+        <div
+          role={error ? 'alert' : 'status'}
+          className={`fixed bottom-5 right-5 z-50 max-w-md rounded-xl border px-4 py-3 text-xs font-semibold shadow-[0_14px_40px_rgba(0,0,0,0.75)] backdrop-blur-md flex items-start gap-2.5 ${
+            error
+              ? 'bg-rose-950/90 border-rose-400/50 text-rose-100'
+              : 'bg-emerald-950/90 border-emerald-400/50 text-emerald-100'
+          }`}
+        >
+          {error ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          ) : (
+            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          )}
+          <span className="flex-1 break-words">{error || toast}</span>
+          <button
+            type="button"
+            aria-label="Dismiss message"
+            onClick={() => {
+              setError('');
+              setToast('');
+            }}
+            className="text-white/70 hover:text-white cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

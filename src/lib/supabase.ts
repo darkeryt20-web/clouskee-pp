@@ -704,35 +704,53 @@ export async function adminUpdateUserAccess(
   session: SessionIdentity,
   targetProfileId: string,
   updates: {
-    plan: 'free' | 'premium';
-    is_admin: boolean;
-    custom_roles: CustomRoleBadge[];
+    plan?: string | null;
+    is_admin?: boolean | null;
+    custom_roles?: (string | CustomRoleBadge)[] | null;
   },
 ): Promise<{data: AdminProfileSummary | null; error?: string}> {
   const adminCheck = await verifyAdminAccessInSupabase(session);
-  if (!adminCheck.isAdmin || !supabase) {
+  if (!adminCheck.isAdmin || !adminCheck.profileId || !supabase) {
     return {data: null, error: 'Administrator access denied.'};
   }
 
-  const cleanRoles: CustomRoleBadge[] = updates.custom_roles
-    .map((r) => ({
-      name: r.name.trim().slice(0, 32),
-      color: /^#[0-9a-fA-F]{6}$/.test(r.color.trim())
-        ? r.color.trim()
-        : '#8b5cf6',
-    }))
-    .filter((r) => r.name.length > 0);
+  const normalizedRoles: CustomRoleBadge[] = Array.isArray(updates.custom_roles)
+    ? updates.custom_roles
+        .map((r) =>
+          typeof r === 'string'
+            ? {name: r.trim().slice(0, 32), color: '#8b5cf6'}
+            : {
+                name: String(r?.name ?? '').trim().slice(0, 32),
+                color: /^#[0-9a-fA-F]{6}$/.test(String(r?.color ?? '').trim())
+                  ? String(r.color).trim()
+                  : '#8b5cf6',
+              },
+        )
+        .filter((r) => r.name.length > 0)
+    : [];
+
+  const nextPlan = updates.plan === 'premium' ? 'premium' : 'free';
+  const nextIsAdmin =
+    typeof updates.is_admin === 'boolean'
+      ? updates.is_admin
+      : Boolean(updates.is_admin);
 
   const {data, error} = await supabase.rpc('admin_update_user_access', {
-    target_profile_id: targetProfileId,
-    new_plan: updates.plan === 'premium' ? 'premium' : 'free',
-    new_is_admin: Boolean(updates.is_admin),
-    new_custom_roles: cleanRoles,
-    admin_profile_id: adminCheck.profileId ?? null,
+    admin_profile_id: String(adminCheck.profileId),
+    target_profile_id: String(targetProfileId),
+    new_plan: nextPlan,
+    new_is_admin: nextIsAdmin,
+    new_roles: normalizedRoles,
   });
 
   if (error) {
-    return {data: null, error: error.message};
+    const details = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(' — ');
+    return {
+      data: null,
+      error: details || 'Failed to update user access via admin_update_user_access.',
+    };
   }
 
   const updatedRow = Array.isArray(data) ? data[0] : data;
@@ -744,11 +762,11 @@ export async function adminUpdateUserAccess(
       avatar_url: null,
       email: null,
       discord_username: null,
-      plan: updates.plan === 'premium' ? 'premium' : 'free',
+      plan: nextPlan,
       views: 0,
       monthly_views: 0,
-      is_admin: Boolean(updates.is_admin),
-      custom_roles: cleanRoles,
+      is_admin: nextIsAdmin,
+      custom_roles: normalizedRoles,
     },
   };
 }
