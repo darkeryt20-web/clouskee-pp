@@ -25,6 +25,8 @@ import {
   getProfileByUsername,
   isSupabaseConfigured,
   ProfileRecord,
+  sanitizeUserProfilePayload,
+  updateOwnedProfileRecord,
   updateProfileRecord,
 } from '../lib/supabase';
 import {
@@ -98,9 +100,12 @@ function writeStoredProfile(profile: ProfileRecord | null) {
   if (typeof window === 'undefined') return;
   try {
     if (profile) {
+      // Never persist privileged admin flags in browser storage
+      const safeCache: Record<string, unknown> = {...profile};
+      delete safeCache.is_admin;
       window.sessionStorage.setItem(
         ACTIVE_PROFILE_STORAGE_KEY,
-        JSON.stringify(profile),
+        JSON.stringify(safeCache),
       );
     } else {
       window.sessionStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);
@@ -507,6 +512,20 @@ export function AuthProvider({children}: {children: ReactNode}) {
       if (!activeProfile) {
         throw new Error('No active profile session.');
       }
+
+      const liveFirebaseUid =
+        auth?.currentUser?.uid ??
+        firebaseUser?.uid ??
+        activeProfile.firebase_uid ??
+        null;
+      if (
+        auth?.currentUser?.uid &&
+        activeProfile.firebase_uid &&
+        auth.currentUser.uid !== activeProfile.firebase_uid
+      ) {
+        throw new Error('Unauthorized: session ownership mismatch.');
+      }
+
       const check = await checkUsernameAvailability(
         newUsername,
         activeProfile.id,
@@ -522,9 +541,14 @@ export function AuthProvider({children}: {children: ReactNode}) {
         return updatedLocal;
       }
 
-      const res = await updateProfileRecord(activeProfile.id, {
-        username: check.cleaned,
-      });
+      const res = await updateOwnedProfileRecord(
+        activeProfile.id,
+        {username: check.cleaned},
+        {
+          firebaseUid: liveFirebaseUid,
+          discordId: activeProfile.discord_id,
+        },
+      );
       if (res.error || !res.data) {
         throw new Error(res.error || 'Failed to update username.');
       }
@@ -533,18 +557,42 @@ export function AuthProvider({children}: {children: ReactNode}) {
       setActiveProfile(res.data);
       return res.data;
     },
-    [activeProfile, setActiveProfile],
+    [activeProfile, firebaseUser?.uid, setActiveProfile],
   );
 
   const updateOwnProfile = useCallback(
     async (updates: Partial<ProfileRecord>) => {
       if (!activeProfile) return null;
+
+      const liveFirebaseUid =
+        auth?.currentUser?.uid ??
+        firebaseUser?.uid ??
+        activeProfile.firebase_uid ??
+        null;
+      if (
+        auth?.currentUser?.uid &&
+        activeProfile.firebase_uid &&
+        auth.currentUser.uid !== activeProfile.firebase_uid
+      ) {
+        throw new Error('Unauthorized: session ownership mismatch.');
+      }
+
+      const safeUpdates = sanitizeUserProfilePayload(updates);
+
       if (!isSupabaseConfigured || activeProfile.id.startsWith('local-')) {
-        const merged = {...activeProfile, ...updates};
+        const merged = {...activeProfile, ...safeUpdates};
         setActiveProfile(merged);
         return merged;
       }
-      const res = await updateProfileRecord(activeProfile.id, updates);
+
+      const res = await updateOwnedProfileRecord(
+        activeProfile.id,
+        safeUpdates,
+        {
+          firebaseUid: liveFirebaseUid,
+          discordId: activeProfile.discord_id,
+        },
+      );
       if (res.error) {
         throw new Error(res.error);
       }
@@ -554,7 +602,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
       }
       return activeProfile;
     },
-    [activeProfile, setActiveProfile],
+    [activeProfile, firebaseUser?.uid, setActiveProfile],
   );
 
   const signOut = useCallback(async () => {

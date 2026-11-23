@@ -1,4 +1,5 @@
 import {createClient, SupabaseClient} from '@supabase/supabase-js';
+import {sanitizeExternalUrl} from './domain';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
@@ -120,7 +121,93 @@ export interface ProfileRecord {
   views: number;
   monthly_views: number;
   plan: string | null;
+  is_admin?: boolean | null;
   created_at?: string;
+}
+
+export interface SessionIdentity {
+  firebaseUid?: string | null;
+  discordId?: string | null;
+}
+
+const PROTECTED_PROFILE_KEYS = new Set<string>([
+  'id',
+  'is_admin',
+  'plan',
+  'views',
+  'monthly_views',
+  'created_at',
+  'firebase_uid',
+  'discord_id',
+]);
+
+const URL_PROFILE_KEYS = [
+  'avatar_url',
+  'avatar_decoration_url',
+  'bg_url',
+  'music_url',
+  'music_cover',
+  'custom_cursor_url',
+] as const;
+
+export function sanitizeUserProfilePayload(
+  updates: Partial<ProfileRecord>,
+): Partial<ProfileRecord> {
+  const safe: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (PROTECTED_PROFILE_KEYS.has(key)) continue;
+    safe[key] = value;
+  }
+
+  for (const urlKey of URL_PROFILE_KEYS) {
+    if (urlKey in safe) {
+      const raw = safe[urlKey] as string | null | undefined;
+      if (raw && typeof raw === 'string' && raw.trim()) {
+        const cleaned = sanitizeExternalUrl(raw);
+        if (!cleaned) {
+          throw new Error(
+            `Blocked unsafe URL in ${urlKey}. Only https:// and http:// URLs are allowed.`,
+          );
+        }
+        safe[urlKey] = cleaned;
+      } else {
+        safe[urlKey] = null;
+      }
+    }
+  }
+
+  if (Array.isArray(safe.links)) {
+    const cleanLinks: ProfileLinkItem[] = [];
+    for (const rawItem of safe.links as ProfileLinkItem[]) {
+      if (!rawItem || typeof rawItem !== 'object') continue;
+      const safeUrl = sanitizeExternalUrl(rawItem.url);
+      if (!safeUrl) {
+        throw new Error(
+          `Blocked unsafe link URL "${rawItem.label || rawItem.url}". Only https:// and http:// URLs are allowed.`,
+        );
+      }
+      let safeIcon: string | undefined;
+      if (rawItem.customIconUrl && rawItem.customIconUrl.trim()) {
+        const checkedIcon = sanitizeExternalUrl(rawItem.customIconUrl);
+        if (!checkedIcon) {
+          throw new Error(
+            'Blocked unsafe custom link icon URL. Only https:// and http:// URLs are allowed.',
+          );
+        }
+        safeIcon = checkedIcon;
+      }
+      cleanLinks.push({
+        label: typeof rawItem.label === 'string' ? rawItem.label.trim() : '',
+        url: safeUrl,
+        ...(rawItem.preset ? {preset: rawItem.preset} : {}),
+        ...(safeIcon ? {customIconUrl: safeIcon} : {}),
+      });
+    }
+    safe.links = cleanLinks;
+  }
+
+  return safe as Partial<ProfileRecord>;
 }
 
 export async function isUsernameAvailableInSupabase(
@@ -405,6 +492,158 @@ export async function updateProfileRecord(
   }
 
   return {data: data as ProfileRecord};
+}
+
+export async function updateOwnedProfileRecord(
+  profileId: string,
+  updates: Partial<ProfileRecord>,
+  session: SessionIdentity,
+): Promise<{data: ProfileRecord | null; error?: string}> {
+  if (!supabase) {
+    return {data: null, error: 'Supabase is not configured.'};
+  }
+
+  const firebaseUid = session.firebaseUid?.trim() || null;
+  const discordId = session.discordId?.trim() || null;
+  if (!firebaseUid && !discordId) {
+    return {
+      data: null,
+      error: 'Authentication required before saving profile changes.',
+    };
+  }
+
+  let safeUpdates: Partial<ProfileRecord>;
+  try {
+    safeUpdates = sanitizeUserProfilePayload(updates);
+  } catch (err: unknown) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Invalid profile payload.',
+    };
+  }
+
+  // Verify the target profile row belongs to the authenticated user session
+  const {data: targetRow, error: lookupError} = await supabase
+    .from('profiles')
+    .select('id, firebase_uid, discord_id')
+    .eq('id', profileId)
+    .maybeSingle();
+
+  if (lookupError || !targetRow) {
+    return {
+      data: null,
+      error: lookupError?.message || 'Target profile could not be verified.',
+    };
+  }
+
+  const ownsViaFirebase = Boolean(
+    firebaseUid && targetRow.firebase_uid === firebaseUid,
+  );
+  const ownsViaDiscord = Boolean(
+    discordId && targetRow.discord_id === discordId,
+  );
+
+  if (!ownsViaFirebase && !ownsViaDiscord) {
+    return {
+      data: null,
+      error: 'Unauthorized: profile ownership check failed.',
+    };
+  }
+
+  let query = supabase.from('profiles').update(safeUpdates).eq('id', profileId);
+  if (ownsViaFirebase && firebaseUid) {
+    query = query.eq('firebase_uid', firebaseUid);
+  } else if (ownsViaDiscord && discordId) {
+    query = query.eq('discord_id', discordId);
+  }
+
+  const {data, error} = await query.select('*').single();
+
+  if (error) {
+    return {data: null, error: error.message};
+  }
+
+  return {data: data as ProfileRecord};
+}
+
+export async function verifyAdminAccessInSupabase(
+  session: SessionIdentity,
+): Promise<{isAdmin: boolean; profileId?: string; username?: string}> {
+  if (!supabase) {
+    return {isAdmin: false};
+  }
+
+  const firebaseUid = session.firebaseUid?.trim() || null;
+  const discordId = session.discordId?.trim() || null;
+  if (!firebaseUid && !discordId) {
+    return {isAdmin: false};
+  }
+
+  if (firebaseUid) {
+    const {data, error} = await supabase
+      .from('profiles')
+      .select('id, is_admin, username')
+      .eq('firebase_uid', firebaseUid)
+      .maybeSingle();
+
+    if (!error && data && data.is_admin === true) {
+      return {
+        isAdmin: true,
+        profileId: String(data.id),
+        username: String(data.username ?? ''),
+      };
+    }
+  }
+
+  if (discordId) {
+    const {data, error} = await supabase
+      .from('profiles')
+      .select('id, is_admin, username')
+      .eq('discord_id', discordId)
+      .maybeSingle();
+
+    if (!error && data && data.is_admin === true) {
+      return {
+        isAdmin: true,
+        profileId: String(data.id),
+        username: String(data.username ?? ''),
+      };
+    }
+  }
+
+  return {isAdmin: false};
+}
+
+export interface AdminProfileSummary {
+  id: string;
+  username: string;
+  global_name: string | null;
+  plan: string | null;
+  views: number;
+  monthly_views: number;
+  is_admin: boolean | null;
+  created_at?: string;
+}
+
+export async function fetchAdminProfilesList(
+  session: SessionIdentity,
+): Promise<{data: AdminProfileSummary[]; error?: string}> {
+  const adminCheck = await verifyAdminAccessInSupabase(session);
+  if (!adminCheck.isAdmin || !supabase) {
+    return {data: [], error: 'Administrator access denied.'};
+  }
+
+  const {data, error} = await supabase
+    .from('profiles')
+    .select('id, username, global_name, plan, views, monthly_views, is_admin, created_at')
+    .order('created_at', {ascending: false})
+    .limit(100);
+
+  if (error) {
+    return {data: [], error: error.message};
+  }
+
+  return {data: (data as AdminProfileSummary[]) ?? []};
 }
 
 export async function uploadProfileMedia(

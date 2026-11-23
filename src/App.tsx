@@ -12,6 +12,7 @@ import {Navbar} from './components/Navbar';
 import {Footer} from './components/Footer';
 import {LoadingSpinner} from './components/LoadingSpinner';
 import {LazyErrorBoundary} from './components/LazyErrorBoundary';
+import {AdminRoute} from './components/AdminRoute';
 
 const HomePage = lazy(() =>
   import('./pages/HomePage').then((m) => ({default: m.HomePage})),
@@ -34,6 +35,7 @@ const DiscordCallbackPage = lazy(() =>
   })),
 );
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 
 function ScrollToTop() {
@@ -81,6 +83,14 @@ export default function App() {
                 <Route path="/login" element={<AuthPage mode="login" />} />
                 <Route path="/signup" element={<AuthPage mode="signup" />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <AdminPage />
+                    </AdminRoute>
+                  }
+                />
                 <Route
                   path="/auth/discord/callback"
                   element={<DiscordCallbackPage />}
