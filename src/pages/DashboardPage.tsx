@@ -1,4 +1,4 @@
-import {ChangeEvent, FormEvent, useEffect, useMemo, useState} from 'react';
+import {ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState} from 'react';
 import {Link, Navigate} from 'react-router-dom';
 import {
   AlertCircle,
@@ -10,6 +10,7 @@ import {
   Crown,
   ExternalLink,
   Eye,
+  Globe,
   Image as ImageIcon,
   Link2,
   Loader2,
@@ -40,10 +41,11 @@ import {
   ProfileLinkItem,
   ProfileRecord,
   SocialPresetKey,
-  uploadProfileMedia,
   verifyAdminAccessInSupabase,
 } from '../lib/supabase';
+import {uploadToCloudinary} from '../lib/cloudinaryUpload.js';
 import {sanitizeExternalUrl} from '../lib/domain';
+import {SmartImage} from '../components/CloudinaryMedia';
 import {LoadingSpinner} from '../components/LoadingSpinner';
 import {
   ALLOWED_PROFILE_FONTS,
@@ -169,6 +171,7 @@ export function DashboardPage() {
   // Appearance & Background + Custom Cursor state
   const [bgType, setBgType] = useState<'none' | 'image' | 'video'>('none');
   const [bgUrl, setBgUrl] = useState('');
+  const [bgPublicId, setBgPublicId] = useState('');
   const [bgOpacity, setBgOpacity] = useState(55);
   const [bgBlur, setBgBlur] = useState(0);
   const [cardOpacity, setCardOpacity] = useState(88);
@@ -207,9 +210,11 @@ export function DashboardPage() {
   const [uploadingField, setUploadingField] = useState<
     'bg' | 'audio' | 'cover' | 'avatar' | 'cursor' | null
   >(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadingLinkIconIdx, setUploadingLinkIconIdx] = useState<
     number | null
   >(null);
+  const [linkIconProgress, setLinkIconProgress] = useState<number | null>(null);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -218,9 +223,17 @@ export function DashboardPage() {
   const [verifiedIsAdmin, setVerifiedIsAdmin] = useState(false);
   const [showLightningUpgradePrompt, setShowLightningUpgradePrompt] =
     useState(false);
+  const hydratedProfileIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!activeProfile) return;
+    if (!activeProfile) {
+      hydratedProfileIdRef.current = null;
+      return;
+    }
+    if (hydratedProfileIdRef.current === activeProfile.id) {
+      return;
+    }
+    hydratedProfileIdRef.current = activeProfile.id;
     setDraftUsername(activeProfile.username);
     setUsernameStatus({state: 'idle'});
     setGlobalName(activeProfile.global_name ?? activeProfile.username);
@@ -262,6 +275,7 @@ export function DashboardPage() {
 
     setBgType(activeProfile.bg_type ?? 'none');
     setBgUrl(activeProfile.bg_url ?? '');
+    setBgPublicId(activeProfile.bg_public_id ?? '');
     setBgOpacity(activeProfile.bg_opacity ?? 55);
     setBgBlur(activeProfile.bg_blur ?? 0);
     setCardOpacity(activeProfile.card_opacity ?? 88);
@@ -428,7 +442,8 @@ export function DashboardPage() {
       show_profile_link: false,
       show_views_count: showViewsCount,
       bg_type: bgType,
-      bg_url: bgUrl.trim() || null,
+      bg_url: bgType === 'none' ? null : bgUrl.trim() || null,
+      bg_public_id: bgType === 'none' ? null : bgPublicId.trim() || null,
       bg_opacity: bgOpacity,
       bg_blur: bgBlur,
       card_opacity: cardOpacity,
@@ -480,6 +495,7 @@ export function DashboardPage() {
     showViewsCount,
     bgType,
     bgUrl,
+    bgPublicId,
     bgOpacity,
     bgBlur,
     cardOpacity,
@@ -545,6 +561,66 @@ export function DashboardPage() {
     }
   };
 
+  const clearMediaInDraftAndDb = async (
+    target: 'bg' | 'audio' | 'cover' | 'avatar' | 'cursor',
+    nextBgType?: 'none' | 'image' | 'video',
+  ) => {
+    if (target === 'bg') {
+      setBgUrl('');
+      setBgPublicId('');
+      if (nextBgType) {
+        setBgType(nextBgType);
+      }
+      await updateOwnProfile({
+        ...(nextBgType ? {bg_type: nextBgType} : {}),
+        bg_url: null,
+        bg_public_id: null,
+      });
+    } else if (target === 'avatar') {
+      setAvatarUrl('');
+      await updateOwnProfile({avatar_url: null});
+    } else if (target === 'cursor') {
+      setCustomCursorUrl('');
+      await updateOwnProfile({custom_cursor_url: null});
+    } else if (target === 'cover') {
+      setMusicCover('');
+      await updateOwnProfile({music_cover: null});
+    } else if (target === 'audio') {
+      setMusicUrl('');
+      await updateOwnProfile({music_url: null});
+    }
+  };
+
+  const handleChangeBgType = async (nextType: 'none' | 'image' | 'video') => {
+    if (nextType === bgType) return;
+    setErrorMessage('');
+    setSaveMessage('');
+    try {
+      await clearMediaInDraftAndDb('bg', nextType);
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'Unable to clear previous background media.',
+      );
+    }
+  };
+
+  const handleRemoveMedia = async (
+    target: 'bg' | 'audio' | 'cover' | 'avatar' | 'cursor',
+  ) => {
+    setErrorMessage('');
+    setSaveMessage('');
+    try {
+      await clearMediaInDraftAndDb(target);
+      setSaveMessage('Previous media removed from your profile.');
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Unable to remove media.',
+      );
+    }
+  };
+
   const handleMediaUpload = async (
     e: ChangeEvent<HTMLInputElement>,
     target: 'bg' | 'audio' | 'cover' | 'avatar' | 'cursor',
@@ -556,48 +632,78 @@ export function DashboardPage() {
     setErrorMessage('');
     setSaveMessage('');
     setUploadingField(target);
+    setUploadProgress(0);
     try {
-      const folder =
-        target === 'audio'
-          ? 'audio'
-          : target === 'bg'
-            ? 'backgrounds'
-            : target === 'cursor'
-              ? 'cursors'
-              : 'covers';
-      const {url, error} = await uploadProfileMedia(
-        activeProfile.id,
-        file,
-        folder,
-      );
-      if (error || !url) {
-        setErrorMessage(
-          error ||
-            'Upload failed. Ensure Supabase Storage bucket "profile-media" exists or paste a direct URL.',
-        );
+      // Clear any previous/stale media reference in draft & Supabase before saving the new upload
+      await clearMediaInDraftAndDb(target);
+
+      const folderMap: Record<typeof target, string> = {
+        bg: 'clouskee/backgrounds',
+        avatar: 'clouskee/avatars',
+        cursor: 'clouskee/cursors',
+        cover: 'clouskee/covers',
+        audio: 'clouskee/audio',
+      };
+      const resourceType =
+        target === 'bg' && file.type.startsWith('video/')
+          ? 'video'
+          : target === 'audio'
+            ? 'auto'
+            : undefined;
+
+      const uploaded = await uploadToCloudinary(file, {
+        folder: folderMap[target],
+        resourceType,
+        onProgress: (pct) => setUploadProgress(pct),
+      });
+
+      const secureUrl = uploaded.secure_url;
+      if (!secureUrl) {
+        setErrorMessage('Upload failed to return a valid media asset.');
         return;
       }
 
       if (target === 'bg') {
-        setBgUrl(url);
-        if (file.type.startsWith('video/')) {
-          setBgType('video');
-        } else if (file.type.startsWith('image/')) {
-          setBgType('image');
-        }
+        const nextBgType =
+          uploaded.resource_type === 'video' || file.type.startsWith('video/')
+            ? 'video'
+            : 'image';
+        const nextPublicId = uploaded.public_id || '';
+        setBgType(nextBgType);
+        setBgUrl(secureUrl);
+        setBgPublicId(nextPublicId);
+        await updateOwnProfile({
+          bg_type: nextBgType,
+          bg_url: secureUrl,
+          bg_public_id: nextPublicId || null,
+        });
       } else if (target === 'audio') {
-        setMusicUrl(url);
+        setMusicUrl(secureUrl);
+        await updateOwnProfile({music_url: secureUrl});
       } else if (target === 'cover') {
-        setMusicCover(url);
+        setMusicCover(secureUrl);
+        await updateOwnProfile({music_cover: secureUrl});
       } else if (target === 'avatar') {
-        setAvatarUrl(url);
+        setAvatarUrl(secureUrl);
+        await updateOwnProfile({avatar_url: secureUrl});
       } else if (target === 'cursor') {
-        setCustomCursorUrl(url);
+        setCustomCursorUrl(secureUrl);
         setCustomCursorStyle('custom_image');
+        await updateOwnProfile({
+          custom_cursor_url: secureUrl,
+          custom_cursor_style: 'custom_image',
+        });
       }
-      setSaveMessage('Media uploaded. Click Save Changes to publish.');
+      setSaveMessage('Media uploaded & synced to your profile.');
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'Upload failed. Please try selecting a different file.',
+      );
     } finally {
       setUploadingField(null);
+      setUploadProgress(null);
     }
   };
 
@@ -640,27 +746,35 @@ export function DashboardPage() {
     setErrorMessage('');
     setSaveMessage('');
     setUploadingLinkIconIdx(idx);
+    setLinkIconProgress(0);
     try {
-      const {url, error} = await uploadProfileMedia(
-        activeProfile.id,
-        file,
-        'icons',
-      );
-      if (error || !url) {
-        setErrorMessage(
-          error ||
-            'Upload failed. Ensure Supabase Storage bucket "profile-media" exists or paste a direct image URL.',
-        );
+      const uploaded = await uploadToCloudinary(file, {
+        folder: 'clouskee/icons',
+        onProgress: (pct) => setLinkIconProgress(pct),
+      });
+      if (!uploaded.secure_url) {
+        setErrorMessage('Cloudinary did not return a secure image URL.');
         return;
       }
       setLinks((prev) =>
         prev.map((l, i) =>
-          i === idx ? {...l, preset: 'custom', customIconUrl: url} : l,
+          i === idx
+            ? {...l, preset: 'custom', customIconUrl: uploaded.secure_url}
+            : l,
         ),
       );
-      setSaveMessage('Custom logo uploaded. Click Save Changes to publish.');
+      setSaveMessage(
+        'Custom logo uploaded. Click Save Changes to publish.',
+      );
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'Custom logo upload failed. Please try again.',
+      );
     } finally {
       setUploadingLinkIconIdx(null);
+      setLinkIconProgress(null);
     }
   };
 
@@ -699,15 +813,15 @@ export function DashboardPage() {
     }
 
     let safeBg: string | null = null;
+    let safeBgPublicId: string | null = null;
     if (bgType !== 'none' && bgUrl.trim()) {
       const checked = sanitizeExternalUrl(bgUrl);
       if (!checked) {
-        setErrorMessage('Background media URL must start with https:// or http://.');
+        setErrorMessage('Invalid background media asset.');
         return;
       }
       safeBg = checked;
-    } else if (bgUrl.trim()) {
-      safeBg = sanitizeExternalUrl(bgUrl);
+      safeBgPublicId = bgPublicId.trim() || null;
     }
 
     let safeMusic: string | null = null;
@@ -833,6 +947,7 @@ export function DashboardPage() {
         show_views_count: showViewsCount,
         bg_type: bgType,
         bg_url: safeBg,
+        bg_public_id: safeBgPublicId,
         bg_opacity: bgOpacity,
         bg_blur: bgBlur,
         card_opacity: cardOpacity,
@@ -1076,34 +1191,65 @@ export function DashboardPage() {
                     </div>
 
                     <div>
-                      <label
-                        htmlFor="dash-avatar-url"
-                        className="block text-xs font-medium text-slate-300 mb-1.5"
-                      >
-                        Avatar Image URL
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          id="dash-avatar-url"
-                          type="url"
-                          value={avatarUrl}
-                          onChange={(e) => setAvatarUrl(e.target.value)}
-                          placeholder="https://..."
-                          className="flex-1 min-w-0 rounded-xl bg-[#07030d] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2.5 text-sm text-white focus:outline-none"
-                        />
-                        <label className="inline-flex items-center gap-1 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-3 py-2.5 text-xs font-semibold text-purple-200 cursor-pointer shrink-0">
-                          {uploadingField === 'avatar' ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Upload className="w-3.5 h-3.5" />
-                          )}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => handleMediaUpload(e, 'avatar')}
-                            className="hidden"
+                      <span className="block text-xs font-medium text-slate-300 mb-1.5">
+                        Avatar Image
+                      </span>
+                      <div className="flex items-center justify-between gap-2.5 rounded-xl bg-[#07030d] border border-purple-500/25 px-3 py-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <SmartImage
+                            src={avatarUrl}
+                            alt="Avatar preview"
+                            width={64}
+                            height={64}
+                            className="w-8 h-8 rounded-full object-cover border border-purple-500/35 shrink-0"
+                            fallback={
+                              <div className="w-8 h-8 rounded-full bg-purple-950/60 border border-purple-500/30 flex items-center justify-center shrink-0">
+                                <User className="w-4 h-4 text-purple-300" />
+                              </div>
+                            }
                           />
-                        </label>
+                          <span className="text-xs font-medium text-slate-200 truncate">
+                            {avatarUrl.trim()
+                              ? 'Image uploaded'
+                              : 'No file selected'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <label className="inline-flex items-center gap-1.5 rounded-lg bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-2.5 py-1.5 text-xs font-semibold text-purple-200 cursor-pointer shrink-0">
+                            {uploadingField === 'avatar' ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="font-mono tabular-nums">
+                                  {uploadProgress ?? 0}%
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>
+                                  {avatarUrl.trim() ? 'Change' : 'Upload'}
+                                </span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={uploadingField !== null}
+                              onChange={(e) => handleMediaUpload(e, 'avatar')}
+                              className="hidden"
+                            />
+                          </label>
+                          {avatarUrl.trim() && uploadingField !== 'avatar' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMedia('avatar')}
+                              aria-label="Remove avatar"
+                              className="p-1.5 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1552,8 +1698,9 @@ export function DashboardPage() {
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setBgType(opt.id)}
-                            className={`flex items-center justify-center gap-2 rounded-xl border py-2.5 px-3 text-xs font-semibold transition-all cursor-pointer ${
+                            disabled={uploadingField === 'bg'}
+                            onClick={() => handleChangeBgType(opt.id)}
+                            className={`flex items-center justify-center gap-2 rounded-xl border py-2.5 px-3 text-xs font-semibold transition-all cursor-pointer disabled:opacity-60 ${
                               selected
                                 ? 'bg-purple-600/25 border-purple-400 text-white'
                                 : 'bg-[#07030d] border-purple-500/20 text-slate-400 hover:text-slate-200'
@@ -1567,57 +1714,93 @@ export function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Background URL + File Upload */}
+                  {/* Background File Upload (File Upload Only — No Raw URLs) */}
                   {bgType !== 'none' && (
                     <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-3">
-                      <label
-                        htmlFor="dash-bg-url"
-                        className="block text-xs font-medium text-slate-300"
-                      >
-                        {bgType === 'video'
-                          ? 'Background Video URL (.mp4 / .webm) or Upload'
-                          : 'Background Image / GIF URL or Upload'}
-                      </label>
-                      <div className="flex flex-col sm:flex-row gap-2.5">
-                        <input
-                          id="dash-bg-url"
-                          type="url"
-                          value={bgUrl}
-                          onChange={(e) => setBgUrl(e.target.value)}
-                          placeholder={
-                            bgType === 'video'
-                              ? 'https://cdn.example.com/loop.mp4'
-                              : 'https://cdn.example.com/wallpaper.jpg'
-                          }
-                          className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2.5 text-sm text-white focus:outline-none"
-                        />
-                        <label className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-4 py-2.5 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
-                          {uploadingField === 'bg' ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>Uploading...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="w-3.5 h-3.5" />
-                              <span>Upload File</span>
-                            </>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-lg bg-purple-950/60 border border-purple-500/30 flex items-center justify-center shrink-0">
+                            {bgType === 'video' ? (
+                              <Video className="w-4 h-4 text-purple-300" />
+                            ) : (
+                              <ImageIcon className="w-4 h-4 text-purple-300" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-white">
+                              {bgType === 'video'
+                                ? 'Background Video (.mp4 / .webm / .mov)'
+                                : 'Background Image / GIF'}
+                            </p>
+                            <p className="text-[11px] flex items-center gap-1.5 mt-0.5">
+                              {bgUrl.trim() ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-300 font-medium">
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                  <span>
+                                    {bgType === 'video'
+                                      ? 'Video uploaded'
+                                      : 'Image uploaded'}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">
+                                  No file selected
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <label className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-4 py-2 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
+                            {uploadingField === 'bg' ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="font-mono tabular-nums">
+                                  Uploading {uploadProgress ?? 0}%
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>
+                                  {bgUrl.trim()
+                                    ? 'Change File'
+                                    : bgType === 'video'
+                                      ? 'Upload Video'
+                                      : 'Upload Image'}
+                                </span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept={
+                                bgType === 'video'
+                                  ? 'video/mp4,video/webm,video/quicktime'
+                                  : 'image/*'
+                              }
+                              disabled={uploadingField !== null}
+                              onChange={(e) => handleMediaUpload(e, 'bg')}
+                              className="hidden"
+                            />
+                          </label>
+
+                          {bgUrl.trim() && uploadingField !== 'bg' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMedia('bg')}
+                              aria-label="Remove background media"
+                              className="inline-flex items-center gap-1 rounded-xl bg-[#0b0615] hover:bg-rose-950/50 border border-purple-500/20 hover:border-rose-500/40 px-3 py-2 text-xs font-medium text-slate-300 hover:text-rose-200 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove</span>
+                            </button>
                           )}
-                          <input
-                            type="file"
-                            accept={
-                              bgType === 'video'
-                                ? 'video/mp4,video/webm,video/quicktime'
-                                : 'image/*'
-                            }
-                            onChange={(e) => handleMediaUpload(e, 'bg')}
-                            className="hidden"
-                          />
-                        </label>
+                        </div>
                       </div>
                       {bgType === 'video' && (
                         <p className="text-[11px] text-slate-400">
-                          Background videos are always muted by default for visitors.
+                          Background videos are always muted by default for visitors. Uploading a new file replaces the previous background automatically.
                         </p>
                       )}
                     </div>
@@ -1802,30 +1985,67 @@ export function DashboardPage() {
                         </div>
 
                         {customCursorStyle === 'custom_image' && (
-                          <div className="flex flex-col sm:flex-row gap-2.5">
-                            <input
-                              type="url"
-                              value={customCursorUrl}
-                              onChange={(e) =>
-                                setCustomCursorUrl(e.target.value)
-                              }
-                              placeholder="Custom Cursor Image URL (.png, .svg, .cur)"
-                              className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2 text-xs sm:text-sm text-white focus:outline-none"
-                            />
-                            <label className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-4 py-2 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
-                              {uploadingField === 'cursor' ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Upload className="w-3.5 h-3.5" />
-                              )}
-                              <span>Upload Cursor</span>
-                              <input
-                                type="file"
-                                accept="image/*,.cur,.ani"
-                                onChange={(e) => handleMediaUpload(e, 'cursor')}
-                                className="hidden"
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl bg-[#0b0615] border border-purple-500/25 px-3.5 py-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <SmartImage
+                                src={customCursorUrl}
+                                alt="Custom cursor preview"
+                                className="w-6 h-6 object-contain shrink-0"
+                                fallback={
+                                  <div className="w-6 h-6 rounded-md bg-purple-950/50 border border-purple-500/30 flex items-center justify-center shrink-0">
+                                    <MousePointer2 className="w-3.5 h-3.5 text-purple-300" />
+                                  </div>
+                                }
                               />
-                            </label>
+                              <span className="text-xs font-medium text-slate-200 truncate">
+                                {customCursorUrl.trim()
+                                  ? 'Cursor image uploaded'
+                                  : 'No file selected (.png, .svg, .cur)'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <label className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-3.5 py-1.5 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
+                                {uploadingField === 'cursor' ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span className="font-mono tabular-nums">
+                                      {uploadProgress ?? 0}%
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="w-3.5 h-3.5" />
+                                    <span>
+                                      {customCursorUrl.trim()
+                                        ? 'Change File'
+                                        : 'Upload Cursor'}
+                                    </span>
+                                  </>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*,.cur,.ani"
+                                  disabled={uploadingField !== null}
+                                  onChange={(e) =>
+                                    handleMediaUpload(e, 'cursor')
+                                  }
+                                  className="hidden"
+                                />
+                              </label>
+
+                              {customCursorUrl.trim() &&
+                                uploadingField !== 'cursor' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveMedia('cursor')}
+                                    aria-label="Remove custom cursor"
+                                    className="p-1.5 rounded-lg bg-[#07030d] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -2099,69 +2319,122 @@ export function DashboardPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="dash-music-url"
-                      className="block text-xs font-medium text-slate-300 mb-1.5"
-                    >
-                      Audio Source URL (.mp3 / .wav / .ogg)
-                    </label>
-                    <div className="flex flex-col sm:flex-row gap-2.5">
-                      <input
-                        id="dash-music-url"
-                        type="url"
-                        value={musicUrl}
-                        onChange={(e) => setMusicUrl(e.target.value)}
-                        placeholder="https://cdn.example.com/track.mp3"
-                        className="flex-1 rounded-xl bg-[#07030d] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2.5 text-sm text-white focus:outline-none"
-                      />
-                      <label className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-4 py-2.5 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
-                        {uploadingField === 'audio' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Upload className="w-3.5 h-3.5" />
-                        )}
-                        <span>Upload Audio</span>
-                        <input
-                          type="file"
-                          accept="audio/*"
-                          onChange={(e) => handleMediaUpload(e, 'audio')}
-                          className="hidden"
-                        />
-                      </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-3.5 space-y-2.5">
+                      <span className="block text-xs font-medium text-slate-300">
+                        Audio Track (.mp3 / .wav / .ogg)
+                      </span>
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-purple-950/60 border border-purple-500/30 flex items-center justify-center shrink-0">
+                            <Music className="w-4 h-4 text-purple-300" />
+                          </div>
+                          <span className="text-xs font-medium text-slate-200 truncate">
+                            {musicUrl.trim()
+                              ? 'Audio uploaded'
+                              : 'No file selected'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <label className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-3 py-1.5 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
+                            {uploadingField === 'audio' ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="font-mono tabular-nums">
+                                  {uploadProgress ?? 0}%
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>
+                                  {musicUrl.trim() ? 'Change' : 'Upload'}
+                                </span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept="audio/*"
+                              disabled={uploadingField !== null}
+                              onChange={(e) => handleMediaUpload(e, 'audio')}
+                              className="hidden"
+                            />
+                          </label>
+                          {musicUrl.trim() && uploadingField !== 'audio' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMedia('audio')}
+                              aria-label="Remove audio track"
+                              className="p-1.5 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label
-                      htmlFor="dash-music-cover"
-                      className="block text-xs font-medium text-slate-300 mb-1.5"
-                    >
-                      Album Cover Art URL (Optional)
-                    </label>
-                    <div className="flex flex-col sm:flex-row gap-2.5">
-                      <input
-                        id="dash-music-cover"
-                        type="url"
-                        value={musicCover}
-                        onChange={(e) => setMusicCover(e.target.value)}
-                        placeholder="https://cdn.example.com/cover.png"
-                        className="flex-1 rounded-xl bg-[#07030d] border border-purple-500/25 focus:border-purple-400 px-3.5 py-2.5 text-sm text-white focus:outline-none"
-                      />
-                      <label className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-4 py-2.5 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
-                        {uploadingField === 'cover' ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Upload className="w-3.5 h-3.5" />
-                        )}
-                        <span>Upload Cover</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleMediaUpload(e, 'cover')}
-                          className="hidden"
-                        />
-                      </label>
+                    <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-3.5 space-y-2.5">
+                      <span className="block text-xs font-medium text-slate-300">
+                        Album Cover Art (Optional)
+                      </span>
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <SmartImage
+                            src={musicCover}
+                            alt="Album cover preview"
+                            width={64}
+                            height={64}
+                            className="w-8 h-8 rounded-lg object-cover border border-purple-500/35 shrink-0"
+                            fallback={
+                              <div className="w-8 h-8 rounded-lg bg-purple-950/60 border border-purple-500/30 flex items-center justify-center shrink-0">
+                                <ImageIcon className="w-4 h-4 text-purple-300" />
+                              </div>
+                            }
+                          />
+                          <span className="text-xs font-medium text-slate-200 truncate">
+                            {musicCover.trim()
+                              ? 'Cover uploaded'
+                              : 'No file selected'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <label className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-3 py-1.5 text-xs font-semibold text-purple-100 cursor-pointer shrink-0">
+                            {uploadingField === 'cover' ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="font-mono tabular-nums">
+                                  {uploadProgress ?? 0}%
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>
+                                  {musicCover.trim() ? 'Change' : 'Upload'}
+                                </span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={uploadingField !== null}
+                              onChange={(e) => handleMediaUpload(e, 'cover')}
+                              className="hidden"
+                            />
+                          </label>
+                          {musicCover.trim() && uploadingField !== 'cover' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMedia('cover')}
+                              aria-label="Remove cover art"
+                              className="p-1.5 rounded-lg bg-[#0b0615] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2481,42 +2754,76 @@ export function DashboardPage() {
                               />
 
                               {activePreset === 'custom' && (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="url"
-                                    value={item.customIconUrl ?? ''}
-                                    onChange={(e) =>
-                                      setLinks((prev) =>
-                                        prev.map((l, i) =>
-                                          i === idx
-                                            ? {
-                                                ...l,
-                                                preset: 'custom',
-                                                customIconUrl: e.target.value,
-                                              }
-                                            : l,
-                                        ),
-                                      )
-                                    }
-                                    placeholder="Custom Logo Image URL (https://...)"
-                                    className="flex-1 min-w-0 rounded-lg bg-[#0b0615] border border-purple-500/20 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none"
-                                  />
-                                  <label className="inline-flex items-center gap-1 rounded-lg bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-2.5 py-1.5 text-[11px] font-semibold text-purple-200 cursor-pointer shrink-0">
-                                    {uploadingLinkIconIdx === idx ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      <Upload className="w-3 h-3" />
-                                    )}
-                                    <span>Upload</span>
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) =>
-                                        handleUploadLinkIcon(e, idx)
+                                <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0b0615] border border-purple-500/20 px-2.5 py-1.5">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <SmartImage
+                                      src={item.customIconUrl}
+                                      alt={item.label || 'Custom logo'}
+                                      width={40}
+                                      height={40}
+                                      className="w-5 h-5 object-contain rounded-sm shrink-0"
+                                      fallback={
+                                        <Globe className="w-4 h-4 text-slate-400 shrink-0" />
                                       }
-                                      className="hidden"
                                     />
-                                  </label>
+                                    <span className="text-[11px] text-slate-300 truncate">
+                                      {item.customIconUrl?.trim()
+                                        ? 'Logo uploaded'
+                                        : 'No logo selected'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <label className="inline-flex items-center gap-1 rounded-md bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-2 py-1 text-[11px] font-semibold text-purple-200 cursor-pointer shrink-0">
+                                      {uploadingLinkIconIdx === idx ? (
+                                        <>
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          <span className="font-mono tabular-nums">
+                                            {linkIconProgress ?? 0}%
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Upload className="w-3 h-3" />
+                                          <span>
+                                            {item.customIconUrl?.trim()
+                                              ? 'Change'
+                                              : 'Upload'}
+                                          </span>
+                                        </>
+                                      )}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        disabled={uploadingLinkIconIdx !== null}
+                                        onChange={(e) =>
+                                          handleUploadLinkIcon(e, idx)
+                                        }
+                                        className="hidden"
+                                      />
+                                    </label>
+                                    {item.customIconUrl?.trim() &&
+                                      uploadingLinkIconIdx !== idx && (
+                                        <button
+                                          type="button"
+                                          aria-label="Remove custom logo"
+                                          onClick={() =>
+                                            setLinks((prev) =>
+                                              prev.map((l, i) =>
+                                                i === idx
+                                                  ? {
+                                                      ...l,
+                                                      customIconUrl: undefined,
+                                                    }
+                                                  : l,
+                                              ),
+                                            )
+                                          }
+                                          className="p-1 rounded-md bg-[#07030d] border border-purple-500/20 text-slate-400 hover:text-rose-400 cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                  </div>
                                 </div>
                               )}
                             </div>

@@ -1,6 +1,7 @@
 import {Globe} from 'lucide-react';
 import {ProfileLinkItem, SocialPresetKey} from '../lib/supabase';
 import {sanitizeExternalUrl} from '../lib/domain';
+import {SmartImage} from './CloudinaryMedia';
 
 export interface SocialPresetMeta {
   key: SocialPresetKey;
@@ -62,11 +63,13 @@ export function SocialPresetIcon({
     const safeCustomUrl = sanitizeExternalUrl(customIconUrl);
     if (safeCustomUrl) {
       return (
-        <img
+        <SmartImage
           src={safeCustomUrl}
           alt={label || 'Custom link logo'}
-          referrerPolicy="no-referrer"
+          width={96}
+          height={96}
           className={`${className} object-contain rounded-sm select-none`}
+          fallback={<Globe className={className} aria-hidden="true" />}
         />
       );
     }

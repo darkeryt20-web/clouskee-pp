@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import {CustomCursorStyle} from '../lib/supabase';
 import {sanitizeExternalUrl} from '../lib/domain';
+import {SmartImage} from './CloudinaryMedia';
 
 export const CURSOR_STYLES: {id: CustomCursorStyle; label: string}[] = [
   {id: 'dot_ring', label: 'Dot & Ring'},
@@ -66,11 +67,11 @@ export function CustomCursorLayer({
       }}
     >
       {effectiveStyle === 'custom_image' && safeCursorUrl && (
-        <img
+        <SmartImage
           src={safeCursorUrl}
           alt=""
-          referrerPolicy="no-referrer"
-          onError={() => setImgFailed(true)}
+          ariaHidden
+          onErrorFallback={() => setImgFailed(true)}
           className="w-7 h-7 object-contain -translate-x-1 -translate-y-1 drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)]"
         />
       )}

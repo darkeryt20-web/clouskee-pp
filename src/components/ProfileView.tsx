@@ -17,6 +17,7 @@ import {
 import {MusicPlayerCard, normalizeMusicPosition} from './MusicPlayerCard';
 import {CustomCursorLayer, useFinePointer} from './CustomCursorLayer';
 import {LightningCursorCanvas} from './LightningCursorCanvas';
+import {SmartBackgroundVideo, SmartImage} from './CloudinaryMedia';
 
 const DEFAULT_DOCUMENT_TITLE =
   'Clouskee PP — Next-Gen Profile Pages & Secure File Hosting';
@@ -542,30 +543,19 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     >
       {/* Background Video (Strictly Muted) / Image Layer */}
       {profile.bg_type === 'video' && safeBgUrl && (
-        <video
-          ref={videoRef}
+        <SmartBackgroundVideo
           src={safeBgUrl}
-          autoPlay
-          loop
-          muted
-          playsInline
-          onLoadedMetadata={() => {
-            if (videoRef.current) {
-              videoRef.current.defaultMuted = true;
-              videoRef.current.muted = true;
-            }
-          }}
+          videoRef={videoRef}
           className={`${bgPositionClass} w-full h-full object-cover pointer-events-none scale-105`}
           style={{filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined}}
         />
       )}
 
       {profile.bg_type === 'image' && safeBgUrl && (
-        <img
+        <SmartImage
           src={safeBgUrl}
           alt=""
-          aria-hidden="true"
-          referrerPolicy="no-referrer"
+          ariaHidden
           className={`${bgPositionClass} w-full h-full object-cover pointer-events-none scale-105`}
           style={{filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined}}
         />
@@ -643,32 +633,31 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           {/* Avatar + Discord Avatar Decoration Overlay */}
           <div className="flex flex-col items-center text-center">
             <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
-              {safeAvatar ? (
-                <img
-                  src={safeAvatar}
-                  alt={`${displayName} avatar`}
-                  referrerPolicy="no-referrer"
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2"
-                  style={{borderColor: `${accentColor}77`}}
-                />
-              ) : (
-                <div
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white"
-                  style={{
-                    borderColor: `${accentColor}77`,
-                    background: `linear-gradient(135deg, ${accentColor}, #18181b)`,
-                  }}
-                >
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <SmartImage
+                src={safeAvatar}
+                alt={`${displayName} avatar`}
+                width={256}
+                height={256}
+                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2"
+                style={{borderColor: `${accentColor}77`}}
+                fallback={
+                  <div
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white"
+                    style={{
+                      borderColor: `${accentColor}77`,
+                      background: `linear-gradient(135deg, ${accentColor}, #18181b)`,
+                    }}
+                  >
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                }
+              />
 
               {safeDecoration && (
-                <img
+                <SmartImage
                   src={safeDecoration}
                   alt=""
-                  aria-hidden="true"
-                  referrerPolicy="no-referrer"
+                  ariaHidden
                   className="pointer-events-none select-none absolute inset-0 w-24 h-24 sm:w-28 sm:h-28 object-contain"
                 />
               )}

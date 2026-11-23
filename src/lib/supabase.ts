@@ -100,6 +100,7 @@ export interface ProfileRecord {
   show_views_count: boolean | null;
   bg_type: 'none' | 'image' | 'video' | null;
   bg_url: string | null;
+  bg_public_id?: string | null;
   bg_opacity: number | null;
   bg_blur: number | null;
   card_opacity: number | null;
@@ -581,6 +582,26 @@ export async function updateOwnedProfileRecord(
   const {data, error} = await query.select('*').single();
 
   if (error) {
+    if (
+      'bg_public_id' in safeUpdates &&
+      error.message.toLowerCase().includes('bg_public_id')
+    ) {
+      const {bg_public_id: _omitted, ...fallbackUpdates} = safeUpdates;
+      let retryQuery = supabase
+        .from('profiles')
+        .update(fallbackUpdates)
+        .eq('id', profileId);
+      if (ownsViaFirebase && firebaseUid) {
+        retryQuery = retryQuery.eq('firebase_uid', firebaseUid);
+      } else if (ownsViaDiscord && discordId) {
+        retryQuery = retryQuery.eq('discord_id', discordId);
+      }
+      const retry = await retryQuery.select('*').single();
+      if (!retry.error) {
+        return {data: retry.data as ProfileRecord};
+      }
+      return {data: null, error: retry.error.message};
+    }
     return {data: null, error: error.message};
   }
 
@@ -769,53 +790,6 @@ export async function adminUpdateUserAccess(
       custom_roles: normalizedRoles,
     },
   };
-}
-
-export async function uploadProfileMedia(
-  profileId: string,
-  file: File,
-  folder:
-    | 'backgrounds'
-    | 'audio'
-    | 'covers'
-    | 'icons'
-    | 'cursors' = 'backgrounds',
-): Promise<{url: string | null; error?: string}> {
-  if (!supabase) {
-    return {
-      url: null,
-      error:
-        'Supabase Storage is unavailable until VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are configured.',
-    };
-  }
-
-  const maxBytes = 50 * 1024 * 1024; // 50MB client guard
-  if (file.size > maxBytes) {
-    return {
-      url: null,
-      error: 'File exceeds 50MB limit. Use a smaller file or direct media URL.',
-    };
-  }
-
-  const safeExt = file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'bin';
-  const filePath = `${profileId}/${folder}/${Date.now()}.${safeExt}`;
-
-  const {error: uploadErr} = await supabase.storage
-    .from('profile-media')
-    .upload(filePath, file, {
-      cacheControl: '3600',
-      upsert: true,
-    });
-
-  if (uploadErr) {
-    return {url: null, error: uploadErr.message};
-  }
-
-  const {data: publicData} = supabase.storage
-    .from('profile-media')
-    .getPublicUrl(filePath);
-
-  return {url: publicData.publicUrl};
 }
 
 async function detectVisitorIp(): Promise<string> {

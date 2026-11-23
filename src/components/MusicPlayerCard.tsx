@@ -1,6 +1,7 @@
 import {Disc3, Music, Pause, Play} from 'lucide-react';
 import {CSSProperties} from 'react';
 import {MusicCardPosition, ProfileRecord} from '../lib/supabase';
+import {SmartImage} from './CloudinaryMedia';
 
 export const MUSIC_POSITIONS: {id: MusicCardPosition; label: string}[] = [
   {id: 'profile_card_on', label: 'Inside Profile Card'},
@@ -101,19 +102,7 @@ export function MusicPlayerCard({
 
   const renderCover = (sizeClass: string, roundClass = 'rounded-xl', spin = false) => {
     if (!showCover) return null;
-    if (safeMusicCover) {
-      return (
-        <img
-          src={safeMusicCover}
-          alt={titleText}
-          referrerPolicy="no-referrer"
-          className={`${sizeClass} ${roundClass} object-cover shrink-0 border border-white/15 ${
-            spin && isPlaying ? 'animate-[spin_9s_linear_infinite]' : ''
-          }`}
-        />
-      );
-    }
-    return (
+    const fallbackCover = (
       <div
         className={`${sizeClass} ${roundClass} bg-white/8 border border-white/12 flex items-center justify-center shrink-0 text-zinc-200 ${
           spin && isPlaying ? 'animate-[spin_9s_linear_infinite]' : ''
@@ -125,6 +114,19 @@ export function MusicPlayerCard({
           <Music className="w-4 h-4" style={{color: accentColor}} />
         )}
       </div>
+    );
+
+    return (
+      <SmartImage
+        src={safeMusicCover}
+        alt={titleText}
+        width={160}
+        height={160}
+        className={`${sizeClass} ${roundClass} object-cover shrink-0 border border-white/15 ${
+          spin && isPlaying ? 'animate-[spin_9s_linear_infinite]' : ''
+        }`}
+        fallback={fallbackCover}
+      />
     );
   };
 
