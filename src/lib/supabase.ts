@@ -744,7 +744,7 @@ export async function adminUpdateUserAccess(
   });
 
   if (error) {
-    const details = [error.message, error.details, error.hint]
+    const details = [error.code, error.message, error.details, error.hint]
       .filter(Boolean)
       .join(' — ');
     return {

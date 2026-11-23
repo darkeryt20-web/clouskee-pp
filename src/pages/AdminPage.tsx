@@ -126,6 +126,7 @@ export function AdminPage() {
   }, [loadAdminData]);
 
   const showSuccessToast = (msg: string) => {
+    setError('');
     setToast(msg);
     window.setTimeout(() => {
       setToast((prev) => (prev === msg ? '' : prev));
@@ -141,6 +142,7 @@ export function AdminPage() {
     },
   ) => {
     setError('');
+    setToast('');
     setSavingUserId(user.id);
     try {
       const res = await adminUpdateUserAccess(
@@ -275,30 +277,6 @@ export function AdminPage() {
           </div>
         </div>
 
-        {/* Feedback Toast / Error */}
-        {toast && (
-          <div className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-xl bg-emerald-950/95 backdrop-blur-md border border-emerald-500/45 px-4 py-3 text-xs font-semibold text-emerald-100 shadow-[0_14px_40px_rgba(0,0,0,0.65)]">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{toast}</span>
-          </div>
-        )}
-        {error && (
-          <div
-            role="alert"
-            className="fixed bottom-6 right-6 z-50 max-w-md flex items-start gap-2.5 rounded-xl bg-rose-950/95 backdrop-blur-md border border-rose-500/45 px-4 py-3 text-xs font-medium text-rose-100 shadow-[0_14px_40px_rgba(0,0,0,0.7)]"
-          >
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <span className="flex-1">{error}</span>
-            <button
-              type="button"
-              onClick={() => setError('')}
-              aria-label="Dismiss error"
-              className="text-rose-300 hover:text-white cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
 
         {/* Section 1: Daily Total Site Visits & Platform Overview Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
