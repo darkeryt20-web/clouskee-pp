@@ -1058,13 +1058,15 @@ export function DashboardPage() {
                 </>
               )}
             </button>
-            <Link
-              to={profilePath}
+            <a
+              href={profilePath}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#8b5cf6] hover:brightness-110 px-4 py-2 text-xs font-semibold text-white shadow-[0_0_20px_rgba(139,92,246,0.35)] transition-all"
             >
               <span>Open Live Profile</span>
               <ExternalLink className="w-3.5 h-3.5" />
-            </Link>
+            </a>
           </div>
         </div>
 
@@ -3051,14 +3053,35 @@ export function DashboardPage() {
 
                 <div className="flex items-center gap-2 min-w-0">
                   <LiveTabTitleBadge profile={liveDraftProfile} />
-                  <div className="flex-1 max-w-[180px] truncate rounded-md bg-[#120922] border border-purple-500/20 px-2.5 py-1 text-center font-mono text-[11px] text-purple-200">
-                    clouskee.pp/{liveDraftProfile.username}
-                  </div>
+                  <a
+                    href={profilePath}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open profile in a new tab"
+                    className="flex-1 max-w-[180px] inline-flex items-center justify-center gap-1 truncate rounded-md bg-[#120922] hover:bg-[#1a0d32] border border-purple-500/20 hover:border-purple-400/45 px-2.5 py-1 text-center font-mono text-[11px] text-purple-200 hover:text-white transition-colors"
+                  >
+                    <span className="truncate">
+                      clouskee.pp/{liveDraftProfile.username}
+                    </span>
+                    <ExternalLink className="w-2.5 h-2.5 shrink-0 text-purple-400" />
+                  </a>
                 </div>
 
-                <span className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  Live Sync
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                    Live Sync
+                  </span>
+                  <a
+                    href={profilePath}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="View live profile in a new tab"
+                    className="inline-flex items-center gap-1 rounded-md bg-purple-600/25 hover:bg-purple-600/40 border border-purple-400/35 px-2 py-0.5 text-[10px] font-semibold text-purple-100 hover:text-white transition-colors"
+                  >
+                    <span>Open</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
               </div>
 
               {/* Embedded Live Sync Profile Preview */}

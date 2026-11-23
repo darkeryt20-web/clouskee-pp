@@ -598,13 +598,15 @@ export function AdminPage() {
                           <span>Roles ({userRoles.length})</span>
                         </button>
 
-                        <Link
-                          to={`/${encodeURIComponent(user.username)}`}
+                        <a
+                          href={`/${encodeURIComponent(user.username)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/25 px-3 py-1.5 text-[11px] font-semibold text-purple-200 hover:text-white"
                         >
                           <span>View</span>
                           <ExternalLink className="w-3 h-3" />
-                        </Link>
+                        </a>
                       </div>
                     </div>
 

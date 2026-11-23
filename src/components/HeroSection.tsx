@@ -3,6 +3,7 @@ import {Link, useNavigate} from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
+  ExternalLink,
   LayoutDashboard,
   Loader2,
   Sparkles,
@@ -110,13 +111,16 @@ export function HeroSection() {
                 </Link>
               </div>
 
-              <Link
-                to={`/${encodeURIComponent(activeProfile.username)}`}
+              <a
+                href={`/${encodeURIComponent(activeProfile.username)}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#130b22]/90 hover:bg-[#1c1133] border border-purple-400/25 hover:border-purple-400/45 px-7 py-3.5 text-[15px] font-semibold text-slate-100 shadow-[0_4px_20px_rgba(7,3,13,0.65)] hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
               >
                 <User className="w-4 h-4 text-purple-300" aria-hidden="true" />
                 <span>Visit Profile</span>
-              </Link>
+                <ExternalLink className="w-3.5 h-3.5 text-purple-300" aria-hidden="true" />
+              </a>
             </>
           ) : (
             <>

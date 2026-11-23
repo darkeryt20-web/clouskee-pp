@@ -1,5 +1,4 @@
 import {useCallback, useEffect, useState} from 'react';
-import {Link} from 'react-router-dom';
 import {Loader2, RefreshCw, Search, Trophy} from 'lucide-react';
 import {
   fetchLeaderboardProfiles,
@@ -181,9 +180,11 @@ export function LeaderboardPage() {
                 const displayName = profile.global_name || profile.username;
 
                 return (
-                  <Link
+                  <a
                     key={profile.id}
-                    to={`/${encodeURIComponent(profile.username)}`}
+                    href={`/${encodeURIComponent(profile.username)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="grid grid-cols-12 items-center px-5 sm:px-7 py-4 text-sm hover:bg-purple-500/[0.06] transition-colors"
                   >
                     <div className="col-span-2 sm:col-span-1 font-mono font-bold text-purple-300 tabular-nums">
@@ -226,7 +227,7 @@ export function LeaderboardPage() {
                     <div className="col-span-3 sm:col-span-2 text-right font-mono text-slate-200 tabular-nums">
                       {views.toLocaleString()}
                     </div>
-                  </Link>
+                  </a>
                 );
               })}
             </div>

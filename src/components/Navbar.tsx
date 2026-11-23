@@ -235,15 +235,20 @@ export function Navbar() {
                     </p>
                   </div>
 
-                  <Link
+                  <a
                     role="menuitem"
-                    to={`/${encodeURIComponent(activeProfile.username)}`}
+                    href={`/${encodeURIComponent(activeProfile.username)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     onClick={closeAccountMenu}
-                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-purple-500/20 transition-colors"
+                    className="flex items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-purple-500/20 transition-colors"
                   >
-                    <User className="w-3.5 h-3.5 text-purple-300" />
-                    <span>Visit Profile Page</span>
-                  </Link>
+                    <span className="inline-flex items-center gap-2.5">
+                      <User className="w-3.5 h-3.5 text-purple-300" />
+                      <span>Visit Profile Page</span>
+                    </span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
+                  </a>
 
                   <Link
                     role="menuitem"
@@ -331,14 +336,17 @@ export function Navbar() {
           <div className="h-px bg-purple-400/15 my-1.5" />
           {activeProfile ? (
             <div className="flex flex-col gap-2 pt-1">
-              <Link
-                to={`/${encodeURIComponent(activeProfile.username)}`}
+              <a
+                href={`/${encodeURIComponent(activeProfile.username)}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 onClick={closeMobile}
                 className="flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white"
               >
                 <User className="w-4 h-4" />
                 <span>Visit Profile Page</span>
-              </Link>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
               <div className="flex items-center gap-2">
                 <Link
                   to="/dashboard"
