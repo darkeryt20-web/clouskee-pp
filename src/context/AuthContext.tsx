@@ -624,17 +624,13 @@ export function AuthProvider({children}: {children: ReactNode}) {
       try {
         const {claimedUsername, claimedPlan, intent} =
           consumePendingDiscordContext();
-        const synced = await completeDiscordTokenLogin(
+        await completeDiscordTokenLogin(
           accessToken,
           claimedUsername,
           claimedPlan,
           intent,
         );
-        if (intent === 'link') {
-          navigate('/dashboard', {replace: true});
-        } else {
-          navigate(`/${encodeURIComponent(synced.username)}`, {replace: true});
-        }
+        navigate('/dashboard', {replace: true});
       } catch {
         // Handled by callback fallback
       }

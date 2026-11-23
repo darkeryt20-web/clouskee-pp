@@ -1,5 +1,5 @@
 import {FormEvent, useEffect, useState} from 'react';
-import {Link, useNavigate, useSearchParams} from 'react-router-dom';
+import {Link, Navigate, useNavigate, useSearchParams} from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
@@ -59,6 +59,8 @@ export function AuthPage({mode}: AuthPageProps) {
   const addonParam = searchParams.get('addon') ?? '';
 
   const {
+    activeProfile,
+    loading: authLoading,
     signInWithGoogle,
     signInWithEmail,
     signUpWithEmail,
@@ -120,8 +122,8 @@ export function AuthPage({mode}: AuthPageProps) {
     setLoginError('');
     setLoginSubmitting(true);
     try {
-      const profile = await signInWithGoogle();
-      navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
+      await signInWithGoogle();
+      navigate('/dashboard', {replace: true});
     } catch (err: unknown) {
       setLoginError(
         err instanceof Error ? err.message : 'Google sign-in failed.',
@@ -180,8 +182,8 @@ export function AuthPage({mode}: AuthPageProps) {
 
     setLoginSubmitting(true);
     try {
-      const profile = await signInWithEmail(loginEmail.trim(), loginPassword);
-      navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
+      await signInWithEmail(loginEmail.trim(), loginPassword);
+      navigate('/dashboard', {replace: true});
     } catch (err: unknown) {
       setLoginError(
         err instanceof Error ? err.message : 'Invalid email or password.',
@@ -215,11 +217,11 @@ export function AuthPage({mode}: AuthPageProps) {
     setUsernameError('');
     setSignupSubmitting(true);
     try {
-      const profile = await signInWithGoogle(
+      await signInWithGoogle(
         signupStep === 'details' ? username : undefined,
         planParam === 'premium' ? 'premium' : 'free',
       );
-      navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
+      navigate('/dashboard', {replace: true});
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Google signup failed.';
       if (signupStep === 'details') {
@@ -270,13 +272,13 @@ export function AuthPage({mode}: AuthPageProps) {
 
     setSignupSubmitting(true);
     try {
-      const profile = await signUpWithEmail(
+      await signUpWithEmail(
         username,
         signupEmail.trim(),
         signupPassword,
         planParam === 'premium' ? 'premium' : 'free',
       );
-      navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
+      navigate('/dashboard', {replace: true});
     } catch (err: unknown) {
       setDetailsError(
         err instanceof Error ? err.message : 'Failed to create account.',
@@ -293,6 +295,10 @@ export function AuthPage({mode}: AuthPageProps) {
       : planParam === 'free'
         ? 'Free Plan (LKR 0)'
         : null;
+
+  if (!authLoading && activeProfile) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="min-h-[88vh] bg-[#07030d] px-4 sm:px-6 pt-32 sm:pt-36 pb-24 flex items-center justify-center relative overflow-hidden">

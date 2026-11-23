@@ -66,12 +66,8 @@ export function DiscordCallbackPage() {
       claimedPlan,
       intent,
     )
-      .then((profile) => {
-        if (intent === 'link') {
-          navigate('/dashboard', {replace: true});
-        } else {
-          navigate(`/${encodeURIComponent(profile.username)}`, {replace: true});
-        }
+      .then(() => {
+        navigate('/dashboard', {replace: true});
       })
       .catch((err: unknown) => {
         setError(
