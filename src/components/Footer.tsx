@@ -63,18 +63,8 @@ export function Footer() {
             <p className="mt-4 max-w-xs text-xs sm:text-[13px] leading-relaxed text-slate-400">
               Clouskee PP is your go-to for modern, feature-rich link-in-bio
               profile pages, interactive music backgrounds, custom badges, and
-              fast, secure file hosting.
+              fast, secure media hosting.
             </p>
-
-            {/* System Status Pill Badge */}
-            <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#110820] border border-purple-500/25 px-3.5 py-1.5 text-[11.5px] font-medium">
-              <span
-                aria-hidden="true"
-                className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-              />
-              <span className="text-slate-300">System Status:</span>
-              <span className="text-emerald-400 font-semibold">Operational</span>
-            </div>
           </div>
 
           {/* Col 2: NAVIGATION */}

@@ -1,6 +1,14 @@
 import {FormEvent, useRef, useState} from 'react';
 import {Link, useNavigate} from 'react-router-dom';
-import {AlertCircle, ArrowRight, Loader2, Sparkles} from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  LayoutDashboard,
+  Loader2,
+  Sparkles,
+  User,
+} from 'lucide-react';
+import {useAuth} from '../context/AuthContext';
 import {AstronautCharacter} from './AstronautCharacter';
 import {
   checkUsernameAvailability,
@@ -9,6 +17,7 @@ import {
 
 export function HeroSection() {
   const navigate = useNavigate();
+  const {activeProfile} = useAuth();
   const [username, setUsername] = useState('');
   const [checking, setChecking] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -63,18 +72,13 @@ export function HeroSection() {
 
       {/* Main Centered Hero Stack */}
       <div className="relative z-10 w-full max-w-3xl mx-auto flex flex-col items-center text-center">
-        {/* Top Pill Badge */}
-        <div className="inline-flex items-center gap-2 rounded-full bg-[#160b29]/90 border border-purple-500/35 px-4 py-1.5 text-xs sm:text-[13px] font-medium text-purple-100/95 shadow-[0_0_24px_rgba(139,92,246,0.18)] backdrop-blur-md">
-          <span aria-hidden="true">✨</span>
-          <span>Next-Gen Profile Pages &amp; Secure File Hosting</span>
-          <span className="text-purple-400" aria-hidden="true">
-            •
-          </span>
-          <span className="text-purple-300 font-semibold">v2.8 Live</span>
-        </div>
+        {/* Clean Spaced Eyebrow */}
+        <p className="text-[11px] sm:text-xs font-mono font-semibold uppercase tracking-[0.22em] text-purple-300/90">
+          Next-Gen Link-in-Bio &amp; Media Hosting
+        </p>
 
         {/* Display Headline */}
-        <h1 className="mt-8 text-[clamp(2.45rem,5.4vw,4.35rem)] font-extrabold tracking-[-0.03em] leading-[1.08] text-white text-balance">
+        <h1 className="mt-5 text-[clamp(2.45rem,5.4vw,4.35rem)] font-extrabold tracking-[-0.03em] leading-[1.08] text-white text-balance">
           Everything you want,
           <br />
           <span className="bg-gradient-to-r from-[#a855f7] via-[#9333ea] to-[#c084fc] bg-clip-text text-transparent">
@@ -85,29 +89,63 @@ export function HeroSection() {
 
         {/* Subheadline */}
         <p className="mt-6 max-w-xl text-base sm:text-[17px] leading-relaxed text-[#b2abc4] font-normal">
-          Clouskee PP is your go-to for modern, feature-rich link-in-bio pages
-          and fast, secure file hosting.
+          Clouskee PP brings custom glassmorphism profiles, 5-style music
+          players, interactive cursors, and direct media uploads into one sleek
+          creator link.
         </p>
 
-        {/* Primary & Secondary CTAs + Perched 3D Astronaut */}
+        {/* Auth-Aware Primary & Secondary CTAs + Perched 3D Astronaut */}
         <div className="mt-16 sm:mt-20 flex flex-wrap items-center justify-center gap-4">
-          <div className="relative inline-flex">
-            <AstronautCharacter />
-            <Link
-              to="/signup"
-              className="relative inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6d28d9] via-[#7c3aed] to-[#6d28d9] hover:from-[#7c3aed] hover:to-[#9333ea] pl-9 pr-7 py-3.5 text-[15px] font-semibold text-white border border-purple-300/25 shadow-[0_0_32px_rgba(139,92,246,0.48),inset_0_1px_0_rgba(255,255,255,0.22)] hover:shadow-[0_0_42px_rgba(168,85,247,0.72)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
-            >
-              <span>Sign Up Free</span>
-              <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            </Link>
-          </div>
+          {activeProfile ? (
+            <>
+              <div className="relative inline-flex">
+                <AstronautCharacter />
+                <Link
+                  to="/dashboard"
+                  className="relative inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6d28d9] via-[#7c3aed] to-[#6d28d9] hover:from-[#7c3aed] hover:to-[#9333ea] pl-9 pr-7 py-3.5 text-[15px] font-semibold text-white border border-purple-300/25 shadow-[0_0_32px_rgba(139,92,246,0.48),inset_0_1px_0_rgba(255,255,255,0.22)] hover:shadow-[0_0_42px_rgba(168,85,247,0.72)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+                >
+                  <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
+                  <span>Go to Dashboard</span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </Link>
+              </div>
 
-          <Link
-            to="/pricing"
-            className="inline-flex items-center justify-center rounded-full bg-[#130b22]/90 hover:bg-[#1c1133] border border-purple-400/25 hover:border-purple-400/45 px-7 py-3.5 text-[15px] font-semibold text-slate-100 shadow-[0_4px_20px_rgba(7,3,13,0.65)] hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
-          >
-            View Pricing
-          </Link>
+              <Link
+                to={`/${encodeURIComponent(activeProfile.username)}`}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#130b22]/90 hover:bg-[#1c1133] border border-purple-400/25 hover:border-purple-400/45 px-7 py-3.5 text-[15px] font-semibold text-slate-100 shadow-[0_4px_20px_rgba(7,3,13,0.65)] hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+              >
+                <User className="w-4 h-4 text-purple-300" aria-hidden="true" />
+                <span>Visit Profile</span>
+              </Link>
+            </>
+          ) : (
+            <>
+              <div className="relative inline-flex">
+                <AstronautCharacter />
+                <Link
+                  to="/signup"
+                  className="relative inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6d28d9] via-[#7c3aed] to-[#6d28d9] hover:from-[#7c3aed] hover:to-[#9333ea] pl-9 pr-7 py-3.5 text-[15px] font-semibold text-white border border-purple-300/25 shadow-[0_0_32px_rgba(139,92,246,0.48),inset_0_1px_0_rgba(255,255,255,0.22)] hover:shadow-[0_0_42px_rgba(168,85,247,0.72)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+                >
+                  <span>Get Started Free</span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </Link>
+              </div>
+
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center rounded-full bg-[#130b22]/90 hover:bg-[#1c1133] border border-purple-400/25 hover:border-purple-400/45 px-7 py-3.5 text-[15px] font-semibold text-slate-100 shadow-[0_4px_20px_rgba(7,3,13,0.65)] hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+              >
+                Login
+              </Link>
+
+              <Link
+                to="/pricing"
+                className="text-sm font-medium text-purple-300 hover:text-white underline underline-offset-4 decoration-purple-500/40 px-2 py-2 transition-colors whitespace-nowrap"
+              >
+                View Pricing
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Username Claim Input Bar */}

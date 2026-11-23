@@ -8,7 +8,7 @@ import {
   MusicCardPosition,
   ProfileRecord,
 } from '../lib/supabase';
-import {getRuntimeDomainInfo, sanitizeExternalUrl} from '../lib/domain';
+import {sanitizeExternalUrl} from '../lib/domain';
 import {
   getPresetMeta,
   inferPresetFromLink,
@@ -274,7 +274,6 @@ interface ProfileViewProps {
 }
 
 export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
-  const {host} = getRuntimeDomainInfo();
   const isFinePointer = useFinePointer();
 
   const clickToEnterEnabled = profile.click_to_enter_enabled !== false;
@@ -320,7 +319,6 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     ? profile.typewriter_texts
     : [];
 
-  const showProfileLink = profile.show_profile_link === true;
   const showViewsCount = profile.show_views_count !== false;
 
   const musicCardEnabled = profile.music_card_enabled !== false;
@@ -672,12 +670,6 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             >
               @{profile.username}
             </p>
-
-            {showProfileLink && (
-              <p className="mt-1 font-mono text-[11px] text-zinc-400">
-                {host}/{profile.username}
-              </p>
-            )}
 
             {/* Custom Roles & Badges */}
             {(customRoles.length > 0 || badges.length > 0) && (

@@ -32,6 +32,9 @@ export function getRuntimeDomainInfo(): DomainInfo {
   };
 }
 
+const DUPLICATE_VIDEO_EXT_RE =
+  /(\.(?:mp4|webm|mov|m4v|ogv))(?:\.(?:mp4|webm|mov|m4v|ogv))+$/i;
+
 export function sanitizeExternalUrl(url: string | null | undefined): string | null {
   if (!url || typeof url !== 'string') return null;
   const trimmed = url.trim();
@@ -39,6 +42,7 @@ export function sanitizeExternalUrl(url: string | null | undefined): string | nu
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      parsed.pathname = parsed.pathname.replace(DUPLICATE_VIDEO_EXT_RE, '$1');
       return parsed.toString();
     }
     return null;

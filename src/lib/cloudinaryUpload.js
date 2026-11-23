@@ -17,6 +17,33 @@ export const cloudinaryClient = new Cloudinary({
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|avi|mkv|ogv)$/i;
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico|cur)$/i;
 const NON_TRANSFORMABLE_EXT_RE = /\.(svg|cur|ani|ico)$/i;
+const DUPLICATE_VIDEO_EXT_RE =
+  /(\.(?:mp4|webm|mov|m4v|ogv))(?:\.(?:mp4|webm|mov|m4v|ogv))+$/i;
+const TRAILING_ASSET_EXT_RE =
+  /\.(mp4|webm|mov|m4v|avi|mkv|ogv|png|jpe?g|gif|webp|avif|bmp)$/i;
+
+/**
+ * Normalizes accidental duplicate video extensions (e.g. `.mp4.mp4`, `.mp4.webm`)
+ * down to a single extension so video URLs never 404.
+ *
+ * @param {string | null | undefined} url
+ * @returns {string}
+ */
+export function sanitizeCloudinaryMediaUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return '';
+    }
+    parsed.pathname = parsed.pathname.replace(DUPLICATE_VIDEO_EXT_RE, '$1');
+    return parsed.toString();
+  } catch {
+    return trimmed.replace(DUPLICATE_VIDEO_EXT_RE, '$1');
+  }
+}
 
 /**
  * Determine Cloudinary upload endpoint resource type for a file.
@@ -67,9 +94,7 @@ export function uploadToCloudinary(file, options = {}) {
   if (file.size > maxBytes) {
     const maxMb = Math.round(maxBytes / (1024 * 1024));
     return Promise.reject(
-      new Error(
-        `File exceeds ${maxMb}MB limit. Choose a smaller file or paste a direct URL.`,
-      ),
+      new Error(`File exceeds ${maxMb}MB limit. Choose a smaller file.`),
     );
   }
 
@@ -109,8 +134,8 @@ export function uploadToCloudinary(file, options = {}) {
           options.onProgress(100);
         }
         resolve({
-          secure_url: payload.secure_url,
-          public_id: payload.public_id || '',
+          secure_url: sanitizeCloudinaryMediaUrl(payload.secure_url),
+          public_id: (payload.public_id || '').replace(TRAILING_ASSET_EXT_RE, ''),
           resource_type: payload.resource_type || resourceType,
         });
         return;
@@ -139,17 +164,19 @@ export function uploadToCloudinary(file, options = {}) {
 }
 
 /**
- * Parse a Cloudinary delivery URL into cloudName, resourceType, and publicId.
+ * Parse a Cloudinary delivery URL into cloudName, resourceType, extension, and extension-free publicId.
  * Returns null for non-Cloudinary URLs or raw cursor/vector assets that shouldn't be re-transformed.
  *
  * @param {string | null | undefined} url
- * @returns {{ cloudName: string, resourceType: 'image' | 'video', publicId: string } | null}
+ * @returns {{ cloudName: string, resourceType: 'image' | 'video', publicId: string, extension: string } | null}
  */
 export function parseCloudinaryAsset(url) {
-  if (!url || typeof url !== 'string') return null;
+  const normalizedUrl = sanitizeCloudinaryMediaUrl(url);
+  if (!normalizedUrl) return null;
+
   let parsed;
   try {
-    parsed = new URL(url.trim());
+    parsed = new URL(normalizedUrl);
   } catch {
     return null;
   }
@@ -173,11 +200,34 @@ export function parseCloudinaryAsset(url) {
   const publicParts = versionIdx >= 0 ? rest.slice(versionIdx + 1) : rest;
   if (publicParts.length === 0) return null;
 
+  const decodedPath = decodeURIComponent(publicParts.join('/'));
+  const extMatch = decodedPath.match(TRAILING_ASSET_EXT_RE);
+  const extension = extMatch ? extMatch[1].toLowerCase() : '';
+  const publicId = decodedPath.replace(TRAILING_ASSET_EXT_RE, '');
+  if (!publicId) return null;
+
   return {
     cloudName,
     resourceType,
-    publicId: decodeURIComponent(publicParts.join('/')),
+    publicId,
+    extension,
   };
+}
+
+/**
+ * Returns clean single-extension video source descriptors for @cloudinary/react <AdvancedVideo>
+ * so HtmlVideoLayer never appends `.mp4` onto an already-extensioned URL.
+ *
+ * @param {string | null | undefined} url
+ * @returns {Array<{ type: string }>}
+ */
+export function getCloudinaryVideoSources(url) {
+  const asset = parseCloudinaryAsset(url);
+  const ext = asset?.extension;
+  if (ext === 'webm') {
+    return [{type: 'webm'}, {type: 'mp4'}];
+  }
+  return [{type: 'mp4'}];
 }
 
 /**
@@ -221,8 +271,5 @@ export function buildCloudinaryVideo(url) {
       ? cloudinaryClient
       : new Cloudinary({cloud: {cloudName: asset.cloudName}});
 
-  return client
-    .video(asset.publicId)
-    .delivery(format('auto'))
-    .delivery(quality('auto'));
+  return client.video(asset.publicId).delivery(quality('auto'));
 }

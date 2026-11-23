@@ -724,7 +724,10 @@ export function DashboardPage() {
     setSaveMessage('');
     setLinkingGoogle(true);
     try {
-      await linkGoogleAccount();
+      const linked = await linkGoogleAccount();
+      if (!avatarUrl && linked.avatar_url) {
+        setAvatarUrl(linked.avatar_url);
+      }
       setSaveMessage('Google account linked to your Clouskee PP profile.');
     } catch (err: unknown) {
       setErrorMessage(
@@ -3007,9 +3010,8 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Live Sync</span>
+                <span className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  Live Sync
                 </span>
               </div>
 

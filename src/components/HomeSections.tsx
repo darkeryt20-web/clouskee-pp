@@ -2,17 +2,20 @@ import {FormEvent, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   ArrowRight,
+  BarChart3,
   ChevronDown,
   Eye,
   FileText,
-  Flame,
   HardDrive,
   HelpCircle,
+  Layers,
+  MousePointerClick,
   Music,
   Pause,
   Play,
   ShieldCheck,
   Users,
+  Zap,
 } from 'lucide-react';
 import {DEMO_PROFILES, DemoProfile, DemoProfileModal} from './DemoProfileModal';
 import {PricingCards} from './PricingCards';
@@ -52,7 +55,7 @@ const FAQ_ITEMS = [
   {
     question: 'What is Clouskee PP and how does it work?',
     answer:
-      'Clouskee PP is an all-in-one platform for creating sleek, highly custom link-in-bio profile pages and hosting fast, secure files. You can link your social media, stream custom background music, display typewriter bios, earn exclusive badges, and share direct files in seconds.',
+      'Clouskee PP is an all-in-one platform for creating sleek, highly custom link-in-bio profile pages and hosting media assets. You can customize glassmorphism profile cards, place a 5-style music player anywhere on screen, enable Click to Enter gates, customize cursors, and share social links in seconds.',
   },
   {
     question: 'What is the price of Clouskee PP Premium?',
@@ -65,9 +68,9 @@ const FAQ_ITEMS = [
       'Enter your desired username into the clouskee.pp/ claim bar on the homepage and click Claim Now to reserve your custom profile link.',
   },
   {
-    question: 'Can I upload music and custom background artwork?',
+    question: 'Can I upload music, videos, and custom cursors directly?',
     answer:
-      'Yes, you can customize your profile with background artwork and embed background audio tracks with custom player controls.',
+      'Yes, your Creator Studio lets you upload background videos, images, avatars, music tracks, cover art, and custom cursor icons directly from your device with instant live preview syncing.',
   },
   {
     question: 'How can I join the Clouskee PP Discord community?',
@@ -92,7 +95,6 @@ export function HomeSections() {
   const [bottomChecking, setBottomChecking] = useState(false);
   const [bottomError, setBottomError] = useState('');
 
-  // Subtle interactive time progression when user plays the Bento audio widget
   useEffect(() => {
     if (!isAudioPlaying) return;
     const timer = window.setInterval(() => {
@@ -134,7 +136,7 @@ export function HomeSections() {
               key={handle}
               type="button"
               onClick={() => setSelectedDemo(DEMO_PROFILES[handle])}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#130a24] hover:bg-[#1c0f34] border border-purple-500/30 hover:border-purple-400/55 px-3.5 py-1.5 text-xs font-mono font-medium text-purple-100 shadow-[0_0_16px_rgba(124,58,237,0.12)] hover:shadow-[0_0_22px_rgba(168,85,247,0.28)] transition-all duration-150 cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#130a24] hover:bg-[#1c0f34] border border-purple-500/30 hover:border-purple-400/55 px-3.5 py-1.5 text-xs font-mono font-medium text-purple-100 shadow-[0_0_16px_rgba(124,58,237,0.12)] hover:shadow-[0_0_22px_rgba(168,85,247,0.28)] transition-all duration-150 cursor-pointer whitespace-nowrap"
             >
               <span
                 aria-hidden="true"
@@ -157,7 +159,7 @@ export function HomeSections() {
                 className="rounded-2xl bg-[#0d0718]/90 border border-purple-500/20 px-6 py-7 flex flex-col items-center text-center shadow-[0_12px_36px_rgba(4,2,10,0.5)] hover:border-purple-400/35 transition-colors"
               >
                 <div
-                  className={`w-11 h-11 rounded-full border flex items-center justify-center ${stat.iconBg}`}
+                  className={`w-11 h-11 rounded-xl border flex items-center justify-center ${stat.iconBg}`}
                 >
                   <Icon className="w-5 h-5" aria-hidden="true" />
                 </div>
@@ -173,7 +175,7 @@ export function HomeSections() {
         </div>
       </section>
 
-      {/* 2. Features Bento Grid Section */}
+      {/* 2. Features Showcase Grid */}
       <section
         id="features"
         className="max-w-5xl mx-auto px-4 sm:px-6 py-20 sm:py-24"
@@ -183,15 +185,15 @@ export function HomeSections() {
             Designed to make your profile stand out.
           </h2>
           <p className="mt-3.5 text-sm sm:text-base text-[#b2abc4] leading-relaxed">
-            Packed with modern customizations, background music, exclusive
-            badges,
-            <br className="hidden sm:inline" /> and high-speed file hosting.
+            Built with dark glassmorphism cards, interactive audio players,
+            custom cursor effects, real-time analytics, and direct media
+            uploads.
           </p>
         </div>
 
-        {/* Asymmetric 2-Row Bento Grid */}
+        {/* 6-Card Feature Grid */}
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* Card 1: Top-Left Wide (~60% -> 7 cols) */}
+          {/* Card 1: Movable 5-Style Music Card (7 cols) */}
           <div className="lg:col-span-7 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
             <div
               aria-hidden="true"
@@ -208,12 +210,12 @@ export function HomeSections() {
               </div>
 
               <h3 className="mt-5 text-xl font-bold text-white">
-                Background Music &amp; Audio Autoplay
+                Movable 5-Style Music Card
               </h3>
               <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed max-w-xl">
-                Embed your favorite track or lo-fi synthwave beat. Visitors
-                experience immersive background audio complete with custom
-                player controls and animated equalizer indicators.
+                Choose from 5 distinct player layouts and place your music card
+                inside your profile card, directly below it, or pinned to any
+                corner with live scrubbing and countdown timers.
               </p>
             </div>
 
@@ -258,58 +260,90 @@ export function HomeSections() {
                 </div>
               </div>
 
-              <span className="rounded-full bg-[#170c2b] border border-purple-500/25 px-3 py-1 font-mono text-[11px] text-purple-200 tabular-nums shrink-0">
-                {formatSeconds(elapsedSec)} / 03:12
+              <span className="rounded-md bg-[#170c2b] border border-purple-500/25 px-2.5 py-1 font-mono text-[11px] text-purple-200 tabular-nums shrink-0">
+                -{formatSeconds(192 - elapsedSec)} / 03:12
               </span>
             </div>
           </div>
 
-          {/* Card 2: Top-Right (~40% -> 5 cols) */}
+          {/* Card 2: Customizable Profile Card & Click to Enter Gate (5 cols) */}
           <div className="lg:col-span-5 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -top-20 -right-20 w-56 h-56 rounded-full blur-[70px] opacity-30"
               style={{
                 background:
-                  'radial-gradient(circle, rgba(245, 158, 11, 0.35) 0%, transparent 70%)',
+                  'radial-gradient(circle, rgba(168, 85, 247, 0.35) 0%, transparent 70%)',
               }}
             />
 
             <div className="relative z-10">
-              <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-400/25 flex items-center justify-center text-amber-400">
-                <Flame className="w-5 h-5" aria-hidden="true" />
+              <div className="w-11 h-11 rounded-xl bg-fuchsia-500/15 border border-fuchsia-400/25 flex items-center justify-center text-fuchsia-300">
+                <Layers className="w-5 h-5" aria-hidden="true" />
               </div>
 
               <h3 className="mt-5 text-xl font-bold text-white">
-                Exclusive Badges
+                Customizable Profile &amp; Click to Enter
               </h3>
               <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed">
-                Collect verified badges including Founder, Verified OG, Server
-                Booster, Staff Pick, and Developer tags.
+                Fine-tune card opacity, frosted backdrop blur, background videos,
+                and an atmospheric Click to Enter splash screen that unlocks
+                background audio on tap.
               </p>
             </div>
 
-            <div className="relative z-10 mt-6 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-400 px-3 py-1 text-xs font-bold text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.3)]">
-                <span aria-hidden="true">👑</span>
-                <span>Founder</span>
+            <div className="relative z-10 mt-6 rounded-xl bg-[#07030d] border border-purple-500/20 px-4 py-3 flex items-center justify-between text-xs">
+              <span className="inline-flex items-center gap-2 text-slate-300 font-medium">
+                <MousePointerClick className="w-4 h-4 text-purple-400" />
+                <span>Click to Enter Gate</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] px-3 py-1 text-xs font-bold text-white shadow-[0_0_16px_rgba(168,85,247,0.35)]">
-                <span aria-hidden="true">⚡</span>
-                <span>Verified OG</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-cyan-400 to-sky-400 px-3 py-1 text-xs font-bold text-slate-950 shadow-[0_0_16px_rgba(34,211,238,0.3)]">
-                <span aria-hidden="true">💎</span>
-                <span>Premium</span>
+              <span className="font-mono text-[11px] text-purple-300">
+                Audio + Visual Sync
               </span>
             </div>
           </div>
 
-          {/* Card 3: Bottom-Left (~40% -> 5 cols) */}
+          {/* Card 3: Custom & Electric Lightning Cursors (5 cols) */}
           <div className="lg:col-span-5 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -top-20 -right-20 w-56 h-56 rounded-full blur-[70px] opacity-30"
+              style={{
+                background:
+                  'radial-gradient(circle, rgba(244, 63, 94, 0.32) 0%, transparent 70%)',
+              }}
+            />
+
+            <div className="relative z-10">
+              <div className="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-400/25 flex items-center justify-center text-rose-300">
+                <Zap className="w-5 h-5" aria-hidden="true" />
+              </div>
+
+              <h3 className="mt-5 text-xl font-bold text-white">
+                Custom &amp; Electric Lightning Cursors
+              </h3>
+              <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed">
+                Replace default pointers with glowing orbs, crosshairs, uploaded
+                PNG cursors, or Premium single-bolt electric lightning trails
+                with customizable arc length and click shockwaves.
+              </p>
+            </div>
+
+            <div className="relative z-10 mt-6 grid grid-cols-2 gap-2.5 text-xs">
+              <div className="rounded-lg bg-[#080410] border border-purple-500/20 px-3 py-2 text-slate-200 font-medium">
+                Single-Bolt Trail
+              </div>
+              <div className="rounded-lg bg-[#080410] border border-rose-500/25 px-3 py-2 text-rose-200 font-medium">
+                Click Shockwaves
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Typewriter & Global Name Effects (7 cols) */}
+          <div className="lg:col-span-7 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-20 -right-20 w-72 h-72 rounded-full blur-[70px] opacity-30"
               style={{
                 background:
                   'radial-gradient(circle, rgba(99, 102, 241, 0.35) 0%, transparent 70%)',
@@ -322,15 +356,15 @@ export function HomeSections() {
               </div>
 
               <h3 className="mt-5 text-xl font-bold text-white">
-                Typewriter Animation
+                Typewriter Bios &amp; Global Name Effects
               </h3>
-              <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed">
-                Give your profile a retro terminal or sleek typewriter effect
-                with custom typing speeds and looping cursors.
+              <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed max-w-xl">
+                Cycle multi-line typewriter bios, animate browser tab titles,
+                and style your display name with Gradient Shimmer, Neon Pulse,
+                or Floating Letters.
               </p>
             </div>
 
-            {/* Dark Monospace Terminal Preview Box */}
             <div className="relative z-10 mt-6 rounded-xl bg-[#07030d] border border-purple-500/20 px-4 py-3.5 font-mono text-xs sm:text-[13px] text-slate-200 leading-relaxed">
               <span>Full-Stack Architect &amp; Digital Creator</span>
               <span
@@ -340,58 +374,69 @@ export function HomeSections() {
             </div>
           </div>
 
-          {/* Card 4: Bottom-Right Wide (~60% -> 7 cols) */}
-          <div className="lg:col-span-7 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -top-20 -right-20 w-72 h-72 rounded-full blur-[70px] opacity-30"
-              style={{
-                background:
-                  'radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, transparent 70%)',
-              }}
-            />
-
+          {/* Card 5: Analytics, Views & Leaderboard (6 cols) */}
+          <div className="lg:col-span-6 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
             <div className="relative z-10">
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-400/25 flex items-center justify-center text-emerald-400">
-                <HardDrive className="w-5 h-5" aria-hidden="true" />
+              <div className="w-11 h-11 rounded-xl bg-cyan-500/15 border border-cyan-400/25 flex items-center justify-center text-cyan-300">
+                <BarChart3 className="w-5 h-5" aria-hidden="true" />
               </div>
 
               <h3 className="mt-5 text-xl font-bold text-white">
-                Fast, Secure File Hosting
+                Analytics &amp; Unique Profile Views
               </h3>
-              <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed max-w-xl">
-                Upload files up to 5GB per asset with instant CDN distribution.
-                Share direct links with custom passcodes, expiration timers, and
-                view counters.
+              <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed">
+                Track unique IP-deduplicated profile views, compete on all-time
+                and monthly creator leaderboards, and inspect daily platform
+                traffic metrics.
               </p>
             </div>
 
-            {/* Three Mini Sub-Cards */}
-            <div className="relative z-10 mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-[#080410]/95 border border-purple-500/20 px-4 py-3">
-                <p className="text-xs font-bold text-purple-400">
-                  High Speed CDN
-                </p>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  10Gbps Global Edge
+            <div className="relative z-10 mt-6 grid grid-cols-2 gap-3 text-xs">
+              <div className="rounded-lg bg-[#080410] border border-purple-500/20 px-3.5 py-2.5">
+                <p className="font-semibold text-cyan-300">Unique View Count</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Anti-spam deduplication
                 </p>
               </div>
-              <div className="rounded-xl bg-[#080410]/95 border border-purple-500/20 px-4 py-3">
-                <p className="text-xs font-bold text-emerald-400">
-                  Password Protect
-                </p>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Encrypted Downloads
+              <div className="rounded-lg bg-[#080410] border border-purple-500/20 px-3.5 py-2.5">
+                <p className="font-semibold text-purple-300">Live Rankings</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Monthly &amp; all-time boards
                 </p>
               </div>
-              <div className="rounded-xl bg-[#080410]/95 border border-purple-500/20 px-4 py-3">
-                <p className="text-xs font-bold text-amber-400">
-                  Zero Compression
-                </p>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Original Quality
-                </p>
+            </div>
+          </div>
+
+          {/* Card 6: Direct Uploads & Admin/Role Controls (6 cols) */}
+          <div className="lg:col-span-6 relative overflow-hidden rounded-2xl bg-[#0b0615] border border-purple-500/20 p-6 sm:p-7 flex flex-col justify-between">
+            <div className="relative z-10">
+              <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-400/25 flex items-center justify-center text-emerald-400">
+                <ShieldCheck className="w-5 h-5" aria-hidden="true" />
               </div>
+
+              <h3 className="mt-5 text-xl font-bold text-white">
+                Direct Uploads &amp; Role Controls
+              </h3>
+              <p className="mt-2.5 text-sm text-[#b2abc4] leading-relaxed">
+                Upload avatars, videos, audio tracks, and custom link icons in
+                one click, paired with custom profile role tags and Admin access
+                management.
+              </p>
+            </div>
+
+            <div className="relative z-10 mt-6 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/15 border border-amber-400/35 px-2.5 py-1 text-xs font-semibold text-amber-200">
+                Founder
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-purple-500/20 border border-purple-400/35 px-2.5 py-1 text-xs font-semibold text-purple-100">
+                Verified OG
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-cyan-500/15 border border-cyan-400/35 px-2.5 py-1 text-xs font-semibold text-cyan-200">
+                Premium
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/15 border border-emerald-400/35 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+                Developer
+              </span>
             </div>
           </div>
         </div>
@@ -475,8 +520,8 @@ export function HomeSections() {
               Everything you want, right here.
             </h2>
             <p className="mt-3.5 text-sm sm:text-base text-[#cbc4de] leading-relaxed">
-              Join thousands of creators, developers, and stream partners who
-              rely on Clouskee PP for modern bio links and fast file hosting.
+              Join creators, developers, and stream partners using Clouskee PP
+              for modern bio links and media hosting.
             </p>
 
             <form
@@ -508,9 +553,10 @@ export function HomeSections() {
 
               <button
                 type="submit"
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#7c3aed] via-[#9333ea] to-[#a855f7] hover:brightness-110 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_24px_rgba(168,85,247,0.45)] transition-all whitespace-nowrap shrink-0 cursor-pointer"
+                disabled={bottomChecking}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#7c3aed] via-[#9333ea] to-[#a855f7] hover:brightness-110 disabled:opacity-70 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_24px_rgba(168,85,247,0.45)] transition-all whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <span>Claim Now</span>
+                <span>{bottomChecking ? 'Checking...' : 'Claim Now'}</span>
                 <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </button>
             </form>

@@ -1,8 +1,12 @@
 import {AdvancedImage, AdvancedVideo} from '@cloudinary/react';
+import type {VideoSources} from '@cloudinary/html';
+import {videoCodec} from '@cloudinary/url-gen/actions/transcode';
+import {auto} from '@cloudinary/url-gen/qualifiers/videoCodec';
 import {CSSProperties, ReactNode, RefObject, useEffect, useMemo, useState} from 'react';
 import {
   buildCloudinaryImage,
   buildCloudinaryVideo,
+  parseCloudinaryAsset,
 } from '../lib/cloudinaryUpload.js';
 import {sanitizeExternalUrl} from '../lib/domain';
 
@@ -110,6 +114,33 @@ export function SmartBackgroundVideo({
     [safeSrc],
   );
 
+  const videoSources: VideoSources = useMemo(() => {
+    if (!safeSrc) return undefined;
+    const asset = parseCloudinaryAsset(safeSrc);
+    const transcodeAction = videoCodec(auto());
+    if (asset?.extension === 'webm') {
+      return [
+        {
+          type: 'webm',
+          codecs: undefined as unknown as string[],
+          transcode: transcodeAction,
+        },
+        {
+          type: 'mp4',
+          codecs: undefined as unknown as string[],
+          transcode: transcodeAction,
+        },
+      ];
+    }
+    return [
+      {
+        type: 'mp4',
+        codecs: undefined as unknown as string[],
+        transcode: transcodeAction,
+      },
+    ];
+  }, [safeSrc]);
+
   if (!safeSrc || failedSrc === safeSrc) {
     return null;
   }
@@ -125,6 +156,7 @@ export function SmartBackgroundVideo({
     return (
       <AdvancedVideo
         cldVid={cldVid}
+        sources={videoSources}
         innerRef={videoRef}
         autoPlay
         loop
