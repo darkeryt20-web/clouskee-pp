@@ -3,6 +3,7 @@ import {RefObject, useEffect, useRef} from 'react';
 interface LightningCursorCanvasProps {
   enabled: boolean;
   color: string;
+  trailLength?: number;
   isPreview: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
 }
@@ -41,6 +42,12 @@ interface Shockwave {
   lifeMs: number;
   maxRadius: number;
   isPrimaryFlash: boolean;
+}
+
+function clampTrailLength(value: number | undefined): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 120;
+  return Math.min(300, Math.max(30, Math.round(num)));
 }
 
 function buildJaggedSegment(
@@ -102,18 +109,183 @@ function buildBoltWithBranches(
   return {points, branches};
 }
 
+/**
+ * Extracts a clean path slice from the trail walking backwards from the active
+ * pointer up to `maxLength` pixels, interpolating the exact tail endpoint.
+ */
+function sliceTrailByArcLength(
+  trail: TrailPoint[],
+  maxLength: number,
+): {spine: Point[]; totalLength: number} {
+  if (trail.length < 2) {
+    return {spine: [], totalLength: 0};
+  }
+
+  const reversed: Point[] = [{x: trail[trail.length - 1].x, y: trail[trail.length - 1].y}];
+  let accumulated = 0;
+
+  for (let i = trail.length - 2; i >= 0; i--) {
+    const curr = trail[i];
+    const next = trail[i + 1];
+    const segLen = Math.hypot(next.x - curr.x, next.y - curr.y);
+    if (segLen < 0.5) continue;
+
+    if (accumulated + segLen >= maxLength) {
+      const remaining = maxLength - accumulated;
+      const ratio = remaining / segLen;
+      reversed.push({
+        x: next.x + (curr.x - next.x) * ratio,
+        y: next.y + (curr.y - next.y) * ratio,
+      });
+      accumulated = maxLength;
+      break;
+    }
+
+    reversed.push({x: curr.x, y: curr.y});
+    accumulated += segLen;
+  }
+
+  if (reversed.length < 2 || accumulated < 6) {
+    return {spine: [], totalLength: 0};
+  }
+
+  reversed.reverse();
+  return {spine: reversed, totalLength: accumulated};
+}
+
+/**
+ * Resamples the path into evenly spaced points and constructs a single primary
+ * jagged lightning bolt plus 1 to 3 subtle, thin secondary side forks.
+ */
+function buildSingleTrailBolt(
+  spine: Point[],
+  totalLength: number,
+  isPreview: boolean,
+): {mainPoints: Point[]; forks: Point[][]} {
+  if (spine.length < 2 || totalLength < 6) {
+    return {mainPoints: [], forks: []};
+  }
+
+  const targetStep = isPreview ? 11 : 14;
+  const steps = Math.min(22, Math.max(4, Math.round(totalLength / targetStep)));
+
+  // Build cumulative arc lengths along spine
+  const cumLengths: number[] = [0];
+  for (let i = 1; i < spine.length; i++) {
+    cumLengths.push(
+      cumLengths[i - 1] +
+        Math.hypot(spine[i].x - spine[i - 1].x, spine[i].y - spine[i - 1].y),
+    );
+  }
+  const actualTotal = cumLengths[cumLengths.length - 1] || 1;
+
+  // Resample evenly
+  const resampled: Point[] = [];
+  let segCursor = 0;
+  for (let s = 0; s <= steps; s++) {
+    const targetDist = (s / steps) * actualTotal;
+    while (
+      segCursor < cumLengths.length - 2 &&
+      cumLengths[segCursor + 1] < targetDist
+    ) {
+      segCursor++;
+    }
+    const d0 = cumLengths[segCursor];
+    const d1 = cumLengths[segCursor + 1];
+    const span = d1 - d0 || 1;
+    const t = Math.min(1, Math.max(0, (targetDist - d0) / span));
+    resampled.push({
+      x: spine[segCursor].x + (spine[segCursor + 1].x - spine[segCursor].x) * t,
+      y: spine[segCursor].y + (spine[segCursor + 1].y - spine[segCursor].y) * t,
+    });
+  }
+
+  // Displace interior points perpendicularly for crisp electric jaggedness
+  const maxJitter = Math.min(
+    isPreview ? 8 : 11,
+    Math.max(4, actualTotal * 0.09),
+  );
+  const mainPoints: Point[] = [resampled[0]];
+  for (let i = 1; i < resampled.length - 1; i++) {
+    const prev = resampled[i - 1];
+    const next = resampled[i + 1];
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const t = i / (resampled.length - 1);
+    // Taper to 0 at both tail and pointer head so tip aligns tightly with cursor
+    const envelope = Math.sin(t * Math.PI);
+    const offset = (Math.random() - 0.5) * 2 * maxJitter * envelope;
+    mainPoints.push({
+      x: resampled[i].x + nx * offset,
+      y: resampled[i].y + ny * offset,
+    });
+  }
+  mainPoints.push(resampled[resampled.length - 1]);
+
+  // Spawn only 1 to 3 subtle, thin secondary side-branches (forks)
+  const forks: Point[][] = [];
+  if (mainPoints.length >= 5) {
+    const desiredForks =
+      actualTotal < 55 ? 1 : actualTotal < 130 ? 2 : 2 + (Math.random() < 0.6 ? 1 : 0);
+    const startIdx = 1;
+    const endIdx = mainPoints.length - 2;
+    const usableCount = Math.max(1, endIdx - startIdx + 1);
+
+    for (let f = 0; f < desiredForks; f++) {
+      // Spread forks across distinct sections of the primary bolt
+      const zoneStart = startIdx + Math.floor((f / desiredForks) * usableCount);
+      const zoneEnd = Math.min(
+        endIdx,
+        startIdx + Math.floor(((f + 1) / desiredForks) * usableCount),
+      );
+      const anchorIdx =
+        zoneStart +
+        Math.floor(Math.random() * Math.max(1, zoneEnd - zoneStart + 1));
+      const anchor = mainPoints[anchorIdx];
+      const nextPt = mainPoints[Math.min(mainPoints.length - 1, anchorIdx + 1)];
+      const prevPt = mainPoints[Math.max(0, anchorIdx - 1)];
+      const tangentAngle = Math.atan2(
+        nextPt.y - prevPt.y,
+        nextPt.x - prevPt.x,
+      );
+
+      // Fork splits off at a light forward/side angle
+      const side = f % 2 === 0 ? 1 : -1;
+      const forkAngle = tangentAngle + side * (0.42 + Math.random() * 0.48);
+      const forkLen =
+        Math.min(isPreview ? 24 : 34, Math.max(12, actualTotal * 0.18)) *
+        (0.75 + Math.random() * 0.45);
+
+      const forkEndX = anchor.x + Math.cos(forkAngle) * forkLen;
+      const forkEndY = anchor.y + Math.sin(forkAngle) * forkLen;
+      forks.push(buildJaggedSegment(anchor.x, anchor.y, forkEndX, forkEndY, 3, 4.5));
+    }
+  }
+
+  return {mainPoints, forks};
+}
+
 export function LightningCursorCanvas({
   enabled,
   color,
+  trailLength = 120,
   isPreview,
   containerRef,
 }: LightningCursorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const colorRef = useRef(color);
+  const trailLengthRef = useRef(clampTrailLength(trailLength));
 
   useEffect(() => {
     colorRef.current = color;
   }, [color]);
+
+  useEffect(() => {
+    trailLengthRef.current = clampTrailLength(trailLength);
+  }, [trailLength]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -128,7 +300,7 @@ export function LightningCursorCanvas({
     let rafId = 0;
 
     const trail: TrailPoint[] = [];
-    const bolts: LightningBolt[] = [];
+    const clickBolts: LightningBolt[] = [];
     const sparks: Spark[] = [];
     const shockwaves: Shockwave[] = [];
     const pointer = {
@@ -136,8 +308,17 @@ export function LightningCursorCanvas({
       y: 0,
       active: false,
       lastMoveTime: 0,
-      lastBoltX: 0,
-      lastBoltY: 0,
+    };
+
+    // Cached single movement bolt + 1-3 thin forks refreshed on a crisp crackle cadence
+    let cachedMoveBolt: {
+      mainPoints: Point[];
+      forks: Point[][];
+      lastCrackleAt: number;
+    } = {
+      mainPoints: [],
+      forks: [],
+      lastCrackleAt: 0,
     };
 
     const resize = () => {
@@ -178,76 +359,28 @@ export function LightningCursorCanvas({
       return {x: clientX, y: clientY};
     };
 
-    const spawnMoveLightning = (x: number, y: number, now: number) => {
-      const distSinceLast = Math.hypot(
-        x - pointer.lastBoltX,
-        y - pointer.lastBoltY,
+    const refreshSingleMoveBolt = (now: number, force = false) => {
+      if (!force && now - cachedMoveBolt.lastCrackleAt < 34) {
+        return;
+      }
+      const {spine, totalLength} = sliceTrailByArcLength(
+        trail,
+        trailLengthRef.current,
       );
-      if (distSinceLast < 4) return;
-
-      pointer.lastBoltX = x;
-      pointer.lastBoltY = y;
-
-      // Connect from recent trail anchor to active pointer
-      if (trail.length >= 2) {
-        const lookbackIdx = Math.max(0, trail.length - 1 - Math.min(4, trail.length - 1));
-        const anchor = trail[lookbackIdx];
-        const segLen = Math.hypot(x - anchor.x, y - anchor.y);
-        if (segLen >= 6) {
-          const primary = buildBoltWithBranches(
-            anchor.x,
-            anchor.y,
-            x,
-            y,
-            Math.min(10, Math.max(5, Math.floor(segLen / 10))),
-            Math.min(18, Math.max(7, segLen * 0.28)),
-            Math.random() < 0.65 ? 1 : 2,
-          );
-          bolts.push({
-            ...primary,
-            createdAt: now,
-            lifeMs: 170 + Math.random() * 90,
-            width: 1.75,
-          });
-        }
+      if (spine.length < 2) {
+        cachedMoveBolt = {mainPoints: [], forks: [], lastCrackleAt: now};
+        return;
       }
-
-      // Faint surrounding micro-tendrils around the glowing core
-      if (Math.random() < 0.75) {
-        const angle = Math.random() * Math.PI * 2;
-        const reach = (isPreview ? 18 : 26) + Math.random() * 24;
-        const tendril = buildBoltWithBranches(
-          x,
-          y,
-          x + Math.cos(angle) * reach,
-          y + Math.sin(angle) * reach,
-          5,
-          9,
-          1,
-        );
-        bolts.push({
-          ...tendril,
-          createdAt: now,
-          lifeMs: 130 + Math.random() * 80,
-          width: 1.15,
-        });
-      }
-
-      // Floating spark particles
-      const sparkCount = 2 + Math.floor(Math.random() * 3);
-      for (let i = 0; i < sparkCount; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 28 + Math.random() * 75;
-        sparks.push({
-          x,
-          y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          createdAt: now,
-          lifeMs: 200 + Math.random() * 180,
-          size: 1.1 + Math.random() * 1.4,
-        });
-      }
+      const {mainPoints, forks} = buildSingleTrailBolt(
+        spine,
+        totalLength,
+        isPreview,
+      );
+      cachedMoveBolt = {
+        mainPoints,
+        forks,
+        lastCrackleAt: now,
+      };
     };
 
     const spawnClickDischarge = (x: number, y: number, now: number) => {
@@ -269,7 +402,7 @@ export function LightningCursorCanvas({
           16,
           Math.random() < 0.8 ? 2 : 1,
         );
-        bolts.push({
+        clickBolts.push({
           ...bolt,
           createdAt: now,
           lifeMs: 320 + Math.random() * 140,
@@ -330,9 +463,12 @@ export function LightningCursorCanvas({
       pointer.lastMoveTime = now;
 
       if (e.pointerType !== 'touch') {
-        trail.push({x: pos.x, y: pos.y, time: now});
-        if (trail.length > 14) trail.shift();
-        spawnMoveLightning(pos.x, pos.y, now);
+        const last = trail[trail.length - 1];
+        if (!last || Math.hypot(pos.x - last.x, pos.y - last.y) >= 2.5) {
+          trail.push({x: pos.x, y: pos.y, time: now});
+          if (trail.length > 48) trail.shift();
+          refreshSingleMoveBolt(now, true);
+        }
       }
     };
 
@@ -349,6 +485,7 @@ export function LightningCursorCanvas({
     const handlePointerLeave = () => {
       pointer.active = false;
       trail.length = 0;
+      cachedMoveBolt = {mainPoints: [], forks: [], lastCrackleAt: 0};
     };
 
     const previewEl = isPreview ? containerRef.current : null;
@@ -392,9 +529,20 @@ export function LightningCursorCanvas({
 
       ctx.clearRect(0, 0, width, height);
 
-      // Prune stale trail points (> 180ms)
-      while (trail.length > 0 && now - trail[0].time > 180) {
+      // Prune stale trail points (> 220ms) so the bolt retracts and fades when resting
+      let pruned = false;
+      while (trail.length > 0 && now - trail[0].time > 220) {
         trail.shift();
+        pruned = true;
+      }
+
+      const idleMs = now - pointer.lastMoveTime;
+      if (pointer.active && trail.length >= 2 && idleMs < 220) {
+        if (pruned || now - cachedMoveBolt.lastCrackleAt >= 36) {
+          refreshSingleMoveBolt(now, true);
+        }
+      } else if (cachedMoveBolt.mainPoints.length > 0) {
+        cachedMoveBolt = {mainPoints: [], forks: [], lastCrackleAt: now};
       }
 
       // Draw expanding concentric shockwaves & click center flash
@@ -453,12 +601,60 @@ export function LightningCursorCanvas({
         ctx.restore();
       }
 
-      // Draw electric lightning bolts + branches
-      for (let i = bolts.length - 1; i >= 0; i--) {
-        const bolt = bolts[i];
+      // Draw single primary movement lightning bolt + 1-3 thin sparse side forks
+      if (cachedMoveBolt.mainPoints.length >= 2 && idleMs < 220) {
+        const moveAlpha = Math.max(0, Math.min(1, 1 - idleMs / 220));
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 1-3 subtle thin secondary side forks
+        if (cachedMoveBolt.forks.length > 0) {
+          ctx.globalAlpha = moveAlpha * 0.55;
+          ctx.strokeStyle = activeColor;
+          ctx.lineWidth = 1.6;
+          ctx.shadowColor = activeColor;
+          ctx.shadowBlur = 8;
+          for (const fork of cachedMoveBolt.forks) {
+            strokePolyline(fork);
+          }
+
+          ctx.globalAlpha = moveAlpha * 0.65;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 0.65;
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 2;
+          for (const fork of cachedMoveBolt.forks) {
+            strokePolyline(fork);
+          }
+        }
+
+        // Primary main bolt colored outer glow
+        ctx.globalAlpha = moveAlpha * 0.95;
+        ctx.strokeStyle = activeColor;
+        ctx.lineWidth = 3.2;
+        ctx.shadowColor = activeColor;
+        ctx.shadowBlur = 14;
+        strokePolyline(cachedMoveBolt.mainPoints);
+
+        // Primary main bolt crisp white-hot core
+        ctx.globalAlpha = moveAlpha;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.25;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 5;
+        strokePolyline(cachedMoveBolt.mainPoints);
+
+        ctx.restore();
+      }
+
+      // Draw radial click discharge lightning bolts
+      for (let i = clickBolts.length - 1; i >= 0; i--) {
+        const bolt = clickBolts[i];
         const progress = (now - bolt.createdAt) / bolt.lifeMs;
         if (progress >= 1) {
-          bolts.splice(i, 1);
+          clickBolts.splice(i, 1);
           continue;
         }
 
@@ -495,7 +691,7 @@ export function LightningCursorCanvas({
         ctx.restore();
       }
 
-      // Draw & update floating sparks
+      // Draw & update burst sparks
       for (let i = sparks.length - 1; i >= 0; i--) {
         const sp = sparks[i];
         const progress = (now - sp.createdAt) / sp.lifeMs;
@@ -522,11 +718,8 @@ export function LightningCursorCanvas({
       }
 
       // Active glowing electric core at pointer
-      if (pointer.active && now - pointer.lastMoveTime < 350) {
-        const coreAlpha = Math.max(
-          0.25,
-          1 - (now - pointer.lastMoveTime) / 350,
-        );
+      if (pointer.active && idleMs < 260) {
+        const coreAlpha = Math.max(0, 1 - idleMs / 260);
         ctx.save();
         ctx.globalAlpha = coreAlpha;
         const grad = ctx.createRadialGradient(
@@ -535,14 +728,14 @@ export function LightningCursorCanvas({
           0,
           pointer.x,
           pointer.y,
-          16,
+          14,
         );
         grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
         grad.addColorStop(0.35, `${activeColor}cc`);
         grad.addColorStop(1, `${activeColor}00`);
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(pointer.x, pointer.y, 16, 0, Math.PI * 2);
+        ctx.arc(pointer.x, pointer.y, 14, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }

@@ -176,6 +176,7 @@ export function DashboardPage() {
   const [customCursorUrl, setCustomCursorUrl] = useState('');
   const [lightningCursorEnabled, setLightningCursorEnabled] = useState(false);
   const [lightningCursorColor, setLightningCursorColor] = useState('#f43f5e');
+  const [lightningTrailLength, setLightningTrailLength] = useState(120);
 
   // Audio state
   const [musicCardEnabled, setMusicCardEnabled] = useState(true);
@@ -270,6 +271,15 @@ export function DashboardPage() {
     setLightningCursorColor(
       sanitizeHexColor(activeProfile.lightning_cursor_color, '#f43f5e'),
     );
+    setLightningTrailLength(
+      Math.min(
+        300,
+        Math.max(
+          30,
+          Math.round(Number(activeProfile.lightning_trail_length ?? 120) || 120),
+        ),
+      ),
+    );
 
     setMusicCardEnabled(activeProfile.music_card_enabled !== false);
     setMusicTitle(activeProfile.music_title ?? '');
@@ -348,6 +358,7 @@ export function DashboardPage() {
       custom_cursor_url: customCursorUrl.trim() || null,
       lightning_cursor_enabled: lightningCursorEnabled,
       lightning_cursor_color: lightningCursorColor,
+      lightning_trail_length: lightningTrailLength,
       avatar_url: avatarUrl.trim() || null,
       bio,
       typewriter_enabled: typewriterEnabled,
@@ -398,6 +409,7 @@ export function DashboardPage() {
     customCursorUrl,
     lightningCursorEnabled,
     lightningCursorColor,
+    lightningTrailLength,
     avatarUrl,
     bio,
     typewriterEnabled,
@@ -747,6 +759,7 @@ export function DashboardPage() {
         custom_cursor_url: safeCursorUrl,
         lightning_cursor_enabled: lightningCursorEnabled,
         lightning_cursor_color: cleanLightningColor,
+        lightning_trail_length: lightningTrailLength,
         avatar_url: safeAvatar,
         bio: bio.trim(),
         typewriter_enabled: typewriterEnabled,
@@ -1857,6 +1870,38 @@ export function DashboardPage() {
                             placeholder="#f43f5e"
                             className="flex-1 rounded-xl bg-[#0b0615] border border-purple-500/25 focus:border-purple-400 px-3 py-2 font-mono text-xs text-white focus:outline-none"
                           />
+                        </div>
+
+                        {/* Lightning Trail Length Slider (30 - 300) */}
+                        <div className="pt-2 border-t border-purple-500/15 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <label
+                              htmlFor="dash-lightning-trail-length"
+                              className="font-medium text-slate-300"
+                            >
+                              Lightning Trail Length
+                            </label>
+                            <span className="font-mono text-rose-300 tabular-nums">
+                              {lightningTrailLength}px
+                            </span>
+                          </div>
+                          <input
+                            id="dash-lightning-trail-length"
+                            type="range"
+                            min={30}
+                            max={300}
+                            step={5}
+                            value={lightningTrailLength}
+                            onChange={(e) =>
+                              setLightningTrailLength(Number(e.target.value))
+                            }
+                            className="w-full accent-rose-500 cursor-pointer"
+                          />
+                          <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                            <span>30px (Tight)</span>
+                            <span>120px (Default)</span>
+                            <span>300px (Long)</span>
+                          </div>
                         </div>
                       </div>
                     )}

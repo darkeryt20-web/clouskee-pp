@@ -339,6 +339,10 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     profile.lightning_cursor_color,
     '#f43f5e',
   );
+  const lightningTrailLength = Math.min(
+    300,
+    Math.max(30, Math.round(Number(profile.lightning_trail_length ?? 120) || 120)),
+  );
 
   const animatedBrowserTitle = useAnimatedPageTitle(profile);
 
@@ -780,6 +784,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
       <LightningCursorCanvas
         enabled={lightningCursorEnabled}
         color={lightningCursorColor}
+        trailLength={lightningTrailLength}
         isPreview={isPreview}
         containerRef={containerRef}
       />
