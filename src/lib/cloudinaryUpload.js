@@ -65,7 +65,7 @@ export function detectCloudinaryResourceType(file) {
 
 /**
  * Upload an image, video, cursor, or audio file directly to Cloudinary using an unsigned upload preset.
- * Never embeds or sends api_secret from the browser.
+ * Never attaches api_key, api_secret, signature, timestamp, or transformation fields.
  *
  * @param {File} file
  * @param {{
@@ -73,18 +73,23 @@ export function detectCloudinaryResourceType(file) {
  *   resourceType?: 'image' | 'video' | 'auto' | 'raw',
  *   uploadPreset?: string,
  *   cloudName?: string,
- *   onProgress?: (percent: number) => void,
  * }} [options]
  * @returns {Promise<{ secure_url: string, public_id: string, resource_type: string }>}
  */
-export function uploadToCloudinary(file, options = {}) {
-  if (!file) {
-    return Promise.reject(new Error('No file selected for upload.'));
+export async function uploadToCloudinary(file, options = {}) {
+  if (!file || file.size === 0) {
+    throw new Error('Please select a valid, non-empty file to upload.');
   }
 
-  const cloudName = (options.cloudName || CLOUDINARY_CLOUD_NAME).trim();
-  const uploadPreset = (
-    options.uploadPreset || CLOUDINARY_UPLOAD_PRESET
+  const cloudName = String(
+    options.cloudName ||
+      import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ||
+      'gwz68wfo',
+  ).trim();
+  const uploadPreset = String(
+    options.uploadPreset ||
+      import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET ||
+      'clouskee_unsigned',
   ).trim();
   const resourceType =
     options.resourceType || detectCloudinaryResourceType(file);
@@ -93,9 +98,7 @@ export function uploadToCloudinary(file, options = {}) {
     resourceType === 'image' ? 25 * 1024 * 1024 : 100 * 1024 * 1024;
   if (file.size > maxBytes) {
     const maxMb = Math.round(maxBytes / (1024 * 1024));
-    return Promise.reject(
-      new Error(`File exceeds ${maxMb}MB limit. Choose a smaller file.`),
-    );
+    throw new Error(`File exceeds ${maxMb}MB limit. Choose a smaller file.`);
   }
 
   const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/${encodeURIComponent(resourceType)}/upload`;
@@ -103,64 +106,34 @@ export function uploadToCloudinary(file, options = {}) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', uploadPreset);
-  if (options.folder) {
-    formData.append('folder', options.folder);
+  if (options.folder && String(options.folder).trim()) {
+    formData.append('folder', String(options.folder).trim());
   }
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', endpoint);
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && typeof options.onProgress === 'function') {
-        const pct = Math.min(
-          99,
-          Math.max(1, Math.round((event.loaded / event.total) * 100)),
-        );
-        options.onProgress(pct);
-      }
-    };
-
-    xhr.onload = () => {
-      let payload = null;
-      try {
-        payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-      } catch {
-        payload = null;
-      }
-
-      if (xhr.status >= 200 && xhr.status < 300 && payload?.secure_url) {
-        if (typeof options.onProgress === 'function') {
-          options.onProgress(100);
-        }
-        resolve({
-          secure_url: sanitizeCloudinaryMediaUrl(payload.secure_url),
-          public_id: (payload.public_id || '').replace(TRAILING_ASSET_EXT_RE, ''),
-          resource_type: payload.resource_type || resourceType,
-        });
-        return;
-      }
-
-      const cloudMsg = payload?.error?.message;
-      reject(
-        new Error(
-          cloudMsg
-            ? `Cloudinary upload failed: ${cloudMsg}`
-            : `Cloudinary upload failed (HTTP ${xhr.status}). Check unsigned preset "${uploadPreset}".`,
-        ),
-      );
-    };
-
-    xhr.onerror = () => {
-      reject(
-        new Error(
-          'Network error while uploading to Cloudinary. Please try again.',
-        ),
-      );
-    };
-
-    xhr.send(formData);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    body: formData,
   });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      body?.error?.message || `Cloudinary upload failed (${response.status})`,
+    );
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  if (!payload?.secure_url) {
+    throw new Error(
+      'Cloudinary upload failed: response did not include a media URL.',
+    );
+  }
+
+  return {
+    secure_url: sanitizeCloudinaryMediaUrl(payload.secure_url),
+    public_id: (payload.public_id || '').replace(TRAILING_ASSET_EXT_RE, ''),
+    resource_type: payload.resource_type || resourceType,
+  };
 }
 
 /**

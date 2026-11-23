@@ -28,6 +28,7 @@ import {
   Upload,
   User,
   Video,
+  X,
   Zap,
 } from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
@@ -210,11 +211,9 @@ export function DashboardPage() {
   const [uploadingField, setUploadingField] = useState<
     'bg' | 'audio' | 'cover' | 'avatar' | 'cursor' | null
   >(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadingLinkIconIdx, setUploadingLinkIconIdx] = useState<
     number | null
   >(null);
-  const [linkIconProgress, setLinkIconProgress] = useState<number | null>(null);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -632,11 +631,7 @@ export function DashboardPage() {
     setErrorMessage('');
     setSaveMessage('');
     setUploadingField(target);
-    setUploadProgress(0);
     try {
-      // Clear any previous/stale media reference in draft & Supabase before saving the new upload
-      await clearMediaInDraftAndDb(target);
-
       const folderMap: Record<typeof target, string> = {
         bg: 'clouskee/backgrounds',
         avatar: 'clouskee/avatars',
@@ -654,7 +649,6 @@ export function DashboardPage() {
       const uploaded = await uploadToCloudinary(file, {
         folder: folderMap[target],
         resourceType,
-        onProgress: (pct) => setUploadProgress(pct),
       });
 
       const secureUrl = uploaded.secure_url;
@@ -703,7 +697,6 @@ export function DashboardPage() {
       );
     } finally {
       setUploadingField(null);
-      setUploadProgress(null);
     }
   };
 
@@ -749,11 +742,9 @@ export function DashboardPage() {
     setErrorMessage('');
     setSaveMessage('');
     setUploadingLinkIconIdx(idx);
-    setLinkIconProgress(0);
     try {
       const uploaded = await uploadToCloudinary(file, {
         folder: 'clouskee/icons',
-        onProgress: (pct) => setLinkIconProgress(pct),
       });
       if (!uploaded.secure_url) {
         setErrorMessage('Cloudinary did not return a secure image URL.');
@@ -777,7 +768,6 @@ export function DashboardPage() {
       );
     } finally {
       setUploadingLinkIconIdx(null);
-      setLinkIconProgress(null);
     }
   };
 
@@ -1222,9 +1212,7 @@ export function DashboardPage() {
                             {uploadingField === 'avatar' ? (
                               <>
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span className="font-mono tabular-nums">
-                                  {uploadProgress ?? 0}%
-                                </span>
+                                <span>Uploading...</span>
                               </>
                             ) : (
                               <>
@@ -1759,9 +1747,7 @@ export function DashboardPage() {
                             {uploadingField === 'bg' ? (
                               <>
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span className="font-mono tabular-nums">
-                                  Uploading {uploadProgress ?? 0}%
-                                </span>
+                                <span>Uploading...</span>
                               </>
                             ) : (
                               <>
@@ -2012,9 +1998,7 @@ export function DashboardPage() {
                                 {uploadingField === 'cursor' ? (
                                   <>
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    <span className="font-mono tabular-nums">
-                                      {uploadProgress ?? 0}%
-                                    </span>
+                                    <span>Uploading...</span>
                                   </>
                                 ) : (
                                   <>
@@ -2343,9 +2327,7 @@ export function DashboardPage() {
                             {uploadingField === 'audio' ? (
                               <>
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span className="font-mono tabular-nums">
-                                  {uploadProgress ?? 0}%
-                                </span>
+                                <span>Uploading...</span>
                               </>
                             ) : (
                               <>
@@ -2406,9 +2388,7 @@ export function DashboardPage() {
                             {uploadingField === 'cover' ? (
                               <>
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span className="font-mono tabular-nums">
-                                  {uploadProgress ?? 0}%
-                                </span>
+                                <span>Uploading...</span>
                               </>
                             ) : (
                               <>
@@ -2780,9 +2760,7 @@ export function DashboardPage() {
                                       {uploadingLinkIconIdx === idx ? (
                                         <>
                                           <Loader2 className="w-3 h-3 animate-spin" />
-                                          <span className="font-mono tabular-nums">
-                                            {linkIconProgress ?? 0}%
-                                          </span>
+                                          <span>Uploading...</span>
                                         </>
                                       ) : (
                                         <>
@@ -3021,6 +2999,38 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Floating Upload / Save Toast Notification (always visible in viewport) */}
+      {(errorMessage || saveMessage) && (
+        <div
+          role={errorMessage ? 'alert' : 'status'}
+          className={`fixed bottom-5 right-5 z-50 max-w-md rounded-xl border px-4 py-3 text-xs font-semibold shadow-[0_14px_40px_rgba(0,0,0,0.75)] backdrop-blur-md flex items-start gap-2.5 ${
+            errorMessage
+              ? 'bg-rose-950/95 border-rose-400/50 text-rose-100'
+              : 'bg-emerald-950/95 border-emerald-400/50 text-emerald-100'
+          }`}
+        >
+          {errorMessage ? (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          ) : (
+            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          )}
+          <span className="flex-1 break-words">
+            {errorMessage || saveMessage}
+          </span>
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            onClick={() => {
+              setErrorMessage('');
+              setSaveMessage('');
+            }}
+            className="text-white/70 hover:text-white cursor-pointer shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
