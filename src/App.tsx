@@ -13,6 +13,7 @@ import {Footer} from './components/Footer';
 import {LoadingSpinner} from './components/LoadingSpinner';
 import {LazyErrorBoundary} from './components/LazyErrorBoundary';
 import {AdminRoute} from './components/AdminRoute';
+import {recordDailySiteVisitOncePerSession} from './lib/supabase';
 
 const HomePage = lazy(() =>
   import('./pages/HomePage').then((m) => ({default: m.HomePage})),
@@ -65,6 +66,7 @@ export default function App() {
     } catch {
       // Ignore sessionStorage restrictions
     }
+    recordDailySiteVisitOncePerSession();
   }, []);
 
   return (

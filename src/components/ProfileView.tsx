@@ -2,7 +2,9 @@ import {MouseEvent, useEffect, useMemo, useRef, useState} from 'react';
 import {Eye} from 'lucide-react';
 import {
   CustomCursorStyle,
+  CustomRoleBadge,
   GlobalNameEffect,
+  hasPremiumAccess,
   MusicCardPosition,
   ProfileRecord,
 } from '../lib/supabase';
@@ -330,11 +332,26 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   );
   const showVisibleMusicCard = musicCardEnabled && hasMusicMetadata;
 
+  const customRoles: CustomRoleBadge[] = Array.isArray(profile.custom_roles)
+    ? profile.custom_roles
+        .map((role) =>
+          typeof role === 'string'
+            ? {name: role.trim(), color: accentColor}
+            : {
+                name: String(role?.name ?? '').trim(),
+                color: sanitizeHexColor(role?.color, accentColor),
+              },
+        )
+        .filter((role) => role.name.length > 0)
+    : [];
+
   const customCursorEnabled =
     Boolean(profile.custom_cursor_enabled) && isFinePointer;
   const customCursorStyle: CustomCursorStyle =
     profile.custom_cursor_style ?? 'dot_ring';
-  const lightningCursorEnabled = Boolean(profile.lightning_cursor_enabled);
+  const canUseLightningCursor = hasPremiumAccess(profile);
+  const lightningCursorEnabled =
+    Boolean(profile.lightning_cursor_enabled) && canUseLightningCursor;
   const lightningCursorColor = sanitizeHexColor(
     profile.lightning_cursor_color,
     '#f43f5e',
@@ -673,9 +690,26 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
               </p>
             )}
 
-            {/* Badges */}
-            {badges.length > 0 && (
+            {/* Custom Roles & Badges */}
+            {(customRoles.length > 0 || badges.length > 0) && (
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                {customRoles.map((role, idx) => (
+                  <span
+                    key={`${role.name}-${idx}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-white"
+                    style={{
+                      backgroundColor: `${role.color}22`,
+                      borderColor: `${role.color}66`,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{backgroundColor: role.color}}
+                    />
+                    <span>{role.name}</span>
+                  </span>
+                ))}
                 {badges.map((badge) => (
                   <span
                     key={badge}

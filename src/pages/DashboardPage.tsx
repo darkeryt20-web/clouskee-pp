@@ -7,11 +7,13 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Crown,
   ExternalLink,
   Eye,
   Image as ImageIcon,
   Link2,
   Loader2,
+  Lock,
   MessageCircle,
   MousePointer2,
   Music,
@@ -28,15 +30,18 @@ import {
   Zap,
 } from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
+import {auth} from '../lib/firebase';
 import {
   CustomCursorStyle,
   GlobalNameEffect,
+  hasPremiumAccess,
   MusicCardPosition,
   PageTitleMode,
   ProfileLinkItem,
   ProfileRecord,
   SocialPresetKey,
   uploadProfileMedia,
+  verifyAdminAccessInSupabase,
 } from '../lib/supabase';
 import {sanitizeExternalUrl} from '../lib/domain';
 import {LoadingSpinner} from '../components/LoadingSpinner';
@@ -210,6 +215,9 @@ export function DashboardPage() {
   const [saveMessage, setSaveMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [verifiedIsAdmin, setVerifiedIsAdmin] = useState(false);
+  const [showLightningUpgradePrompt, setShowLightningUpgradePrompt] =
+    useState(false);
 
   useEffect(() => {
     if (!activeProfile) return;
@@ -306,6 +314,51 @@ export function DashboardPage() {
     );
   }, [activeProfile]);
 
+  // Re-verify Admin permission directly against Supabase profiles
+  useEffect(() => {
+    if (!activeProfile) {
+      setVerifiedIsAdmin(false);
+      return;
+    }
+
+    const verifiedFirebaseUid =
+      auth?.currentUser?.uid ??
+      firebaseUser?.uid ??
+      activeProfile.firebase_uid ??
+      null;
+    const verifiedDiscordId = activeProfile.discord_id ?? null;
+
+    if (!verifiedFirebaseUid && !verifiedDiscordId) {
+      setVerifiedIsAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+    verifyAdminAccessInSupabase({
+      firebaseUid: verifiedFirebaseUid,
+      discordId: verifiedDiscordId,
+    })
+      .then((res) => {
+        if (!cancelled) {
+          setVerifiedIsAdmin(res.isAdmin === true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVerifiedIsAdmin(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeProfile,
+    activeProfile?.firebase_uid,
+    activeProfile?.discord_id,
+    firebaseUser?.uid,
+  ]);
+
   // Real-time debounced username availability check (excluding own profile ID)
   useEffect(() => {
     if (!activeProfile) return;
@@ -339,10 +392,17 @@ export function DashboardPage() {
     };
   }, [draftUsername, activeProfile]);
 
+  const canUseLightningCursor = hasPremiumAccess(
+    activeProfile,
+    verifiedIsAdmin,
+  );
+
   const liveDraftProfile: ProfileRecord | null = useMemo(() => {
     if (!activeProfile) return null;
+    const canUsePremium = hasPremiumAccess(activeProfile, verifiedIsAdmin);
     return {
       ...activeProfile,
+      is_admin: verifiedIsAdmin || Boolean(activeProfile.is_admin),
       username: sanitizeHandle(draftUsername) || activeProfile.username,
       global_name: globalName.trim() || activeProfile.username,
       global_name_typewriter: globalNameTypewriter,
@@ -356,7 +416,7 @@ export function DashboardPage() {
       custom_cursor_enabled: customCursorEnabled,
       custom_cursor_style: customCursorStyle,
       custom_cursor_url: customCursorUrl.trim() || null,
-      lightning_cursor_enabled: lightningCursorEnabled,
+      lightning_cursor_enabled: canUsePremium ? lightningCursorEnabled : false,
       lightning_cursor_color: lightningCursorColor,
       lightning_trail_length: lightningTrailLength,
       avatar_url: avatarUrl.trim() || null,
@@ -394,6 +454,7 @@ export function DashboardPage() {
     };
   }, [
     activeProfile,
+    verifiedIsAdmin,
     draftUsername,
     globalName,
     globalNameTypewriter,
@@ -757,7 +818,9 @@ export function DashboardPage() {
         custom_cursor_enabled: customCursorEnabled,
         custom_cursor_style: customCursorStyle,
         custom_cursor_url: safeCursorUrl,
-        lightning_cursor_enabled: lightningCursorEnabled,
+        lightning_cursor_enabled: canUseLightningCursor
+          ? lightningCursorEnabled
+          : false,
         lightning_cursor_color: cleanLightningColor,
         lightning_trail_length: lightningTrailLength,
         avatar_url: safeAvatar,
@@ -846,6 +909,18 @@ export function DashboardPage() {
               <span className="uppercase text-purple-300 font-semibold">
                 {activeProfile.plan || 'free'} plan
               </span>
+              {verifiedIsAdmin && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Link
+                    to="/admin"
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-400/35 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-200 hover:text-white"
+                  >
+                    <ShieldCheck className="w-3 h-3 text-amber-400" />
+                    <span>Admin</span>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
 
@@ -1757,7 +1832,7 @@ export function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Electric Lightning Cursor Controls */}
+                  {/* Electric Lightning Cursor Controls (Premium & Admin) */}
                   <div className="rounded-xl bg-[#07030d]/80 border border-purple-500/20 p-4 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5">
@@ -1765,9 +1840,17 @@ export function DashboardPage() {
                           <Zap className="w-4 h-4 text-rose-400" />
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-white">
-                            Lightning Cursor
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-semibold text-white">
+                              Lightning Cursor
+                            </p>
+                            {!canUseLightningCursor && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-400/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-200">
+                                <Crown className="w-2.5 h-2.5 text-amber-400" />
+                                <span>PREMIUM</span>
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-slate-400">
                             Trailing electric lightning bolts on hover and radial shockwave bursts on click.
                           </p>
@@ -1776,28 +1859,71 @@ export function DashboardPage() {
                       <button
                         type="button"
                         role="switch"
-                        aria-checked={lightningCursorEnabled}
-                        onClick={() => setLightningCursorEnabled((p) => !p)}
+                        aria-checked={
+                          canUseLightningCursor ? lightningCursorEnabled : false
+                        }
+                        onClick={() => {
+                          if (!canUseLightningCursor) {
+                            setShowLightningUpgradePrompt(true);
+                            return;
+                          }
+                          setShowLightningUpgradePrompt(false);
+                          setLightningCursorEnabled((p) => !p);
+                        }}
                         className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                          lightningCursorEnabled
-                            ? 'bg-rose-500/20 border-rose-400/60 text-white shadow-[0_0_18px_rgba(244,63,94,0.28)]'
-                            : 'bg-[#0b0615] border-purple-500/25 text-slate-300 hover:text-white'
+                          !canUseLightningCursor
+                            ? 'bg-[#0b0615] border-amber-500/30 text-amber-200/90 hover:border-amber-400/60'
+                            : lightningCursorEnabled
+                              ? 'bg-rose-500/20 border-rose-400/60 text-white shadow-[0_0_18px_rgba(244,63,94,0.28)]'
+                              : 'bg-[#0b0615] border-purple-500/25 text-slate-300 hover:text-white'
                         }`}
                       >
-                        <Zap
-                          className={`w-3.5 h-3.5 ${
-                            lightningCursorEnabled
-                              ? 'text-rose-400'
-                              : 'text-slate-400'
-                          }`}
-                        />
-                        <span>
-                          Lightning Cursor: {lightningCursorEnabled ? 'ON' : 'OFF'}
-                        </span>
+                        {!canUseLightningCursor ? (
+                          <>
+                            <Lock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Locked · Upgrade</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap
+                              className={`w-3.5 h-3.5 ${
+                                lightningCursorEnabled
+                                  ? 'text-rose-400'
+                                  : 'text-slate-400'
+                              }`}
+                            />
+                            <span>
+                              Lightning Cursor:{' '}
+                              {lightningCursorEnabled ? 'ON' : 'OFF'}
+                            </span>
+                          </>
+                        )}
                       </button>
                     </div>
 
-                    {lightningCursorEnabled && (
+                    {!canUseLightningCursor && showLightningUpgradePrompt && (
+                      <div className="rounded-xl bg-amber-950/30 border border-amber-400/35 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="text-xs text-amber-100">
+                          <span className="font-semibold text-white">
+                            Premium Feature:
+                          </span>{' '}
+                          Upgrade to the{' '}
+                          <span className="font-semibold text-amber-200">
+                            Premium Plan
+                          </span>{' '}
+                          to unlock the Electric Lightning Cursor effect on your profile.
+                        </div>
+                        <Link
+                          to="/pricing"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-rose-500 hover:brightness-110 px-3.5 py-1.5 text-xs font-bold text-white shrink-0 transition-all"
+                        >
+                          <Crown className="w-3.5 h-3.5" />
+                          <span>Upgrade Now</span>
+                        </Link>
+                      </div>
+                    )}
+
+                    {canUseLightningCursor && lightningCursorEnabled && (
                       <div className="space-y-3 pt-3 border-t border-purple-500/15">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                           <label

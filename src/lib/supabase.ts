@@ -59,6 +59,11 @@ export type GlobalNameEffect =
   | 'typewriter_cursor'
   | 'floating_letter';
 
+export interface CustomRoleBadge {
+  name: string;
+  color: string;
+}
+
 export interface ProfileRecord {
   id: string;
   firebase_uid: string | null;
@@ -122,7 +127,20 @@ export interface ProfileRecord {
   monthly_views: number;
   plan: string | null;
   is_admin?: boolean | null;
+  custom_roles?: (string | CustomRoleBadge)[] | null;
   created_at?: string;
+}
+
+export function hasPremiumAccess(
+  profile: Pick<ProfileRecord, 'plan' | 'is_admin'> | null | undefined,
+  verifiedIsAdmin = false,
+): boolean {
+  if (!profile) return false;
+  return (
+    profile.plan === 'premium' ||
+    profile.is_admin === true ||
+    verifiedIsAdmin === true
+  );
 }
 
 export interface SessionIdentity {
@@ -134,6 +152,7 @@ const PROTECTED_PROFILE_KEYS = new Set<string>([
   'id',
   'is_admin',
   'plan',
+  'custom_roles',
   'views',
   'monthly_views',
   'created_at',
@@ -392,6 +411,8 @@ export async function createProfileRecord(
     views: payload.views ?? 0,
     monthly_views: payload.monthly_views ?? 0,
     plan: payload.plan ?? 'free',
+    is_admin: false,
+    custom_roles: [],
   };
 
   if (!supabase) {
@@ -618,11 +639,21 @@ export interface AdminProfileSummary {
   id: string;
   username: string;
   global_name: string | null;
+  avatar_url: string | null;
+  email: string | null;
+  discord_username: string | null;
   plan: string | null;
   views: number;
   monthly_views: number;
   is_admin: boolean | null;
+  custom_roles: (string | CustomRoleBadge)[] | null;
   created_at?: string;
+}
+
+export interface DailySiteVisitRow {
+  visit_date: string;
+  total_visits: number;
+  unique_visitors: number;
 }
 
 export async function fetchAdminProfilesList(
@@ -635,15 +666,91 @@ export async function fetchAdminProfilesList(
 
   const {data, error} = await supabase
     .from('profiles')
-    .select('id, username, global_name, plan, views, monthly_views, is_admin, created_at')
+    .select(
+      'id, username, global_name, avatar_url, email, discord_username, plan, views, monthly_views, is_admin, custom_roles, created_at',
+    )
     .order('created_at', {ascending: false})
-    .limit(100);
+    .limit(200);
 
   if (error) {
     return {data: [], error: error.message};
   }
 
   return {data: (data as AdminProfileSummary[]) ?? []};
+}
+
+export async function fetchDailySiteVisits(
+  session: SessionIdentity,
+): Promise<{data: DailySiteVisitRow[]; error?: string}> {
+  const adminCheck = await verifyAdminAccessInSupabase(session);
+  if (!adminCheck.isAdmin || !supabase) {
+    return {data: [], error: 'Administrator access denied.'};
+  }
+
+  const {data, error} = await supabase
+    .from('daily_site_visits')
+    .select('visit_date, total_visits, unique_visitors')
+    .order('visit_date', {ascending: false})
+    .limit(30);
+
+  if (error) {
+    return {data: [], error: error.message};
+  }
+
+  return {data: (data as DailySiteVisitRow[]) ?? []};
+}
+
+export async function adminUpdateUserAccess(
+  session: SessionIdentity,
+  targetProfileId: string,
+  updates: {
+    plan: 'free' | 'premium';
+    is_admin: boolean;
+    custom_roles: CustomRoleBadge[];
+  },
+): Promise<{data: AdminProfileSummary | null; error?: string}> {
+  const adminCheck = await verifyAdminAccessInSupabase(session);
+  if (!adminCheck.isAdmin || !supabase) {
+    return {data: null, error: 'Administrator access denied.'};
+  }
+
+  const cleanRoles: CustomRoleBadge[] = updates.custom_roles
+    .map((r) => ({
+      name: r.name.trim().slice(0, 32),
+      color: /^#[0-9a-fA-F]{6}$/.test(r.color.trim())
+        ? r.color.trim()
+        : '#8b5cf6',
+    }))
+    .filter((r) => r.name.length > 0);
+
+  const {data, error} = await supabase.rpc('admin_update_user_access', {
+    target_profile_id: targetProfileId,
+    new_plan: updates.plan === 'premium' ? 'premium' : 'free',
+    new_is_admin: Boolean(updates.is_admin),
+    new_custom_roles: cleanRoles,
+    admin_profile_id: adminCheck.profileId ?? null,
+  });
+
+  if (error) {
+    return {data: null, error: error.message};
+  }
+
+  const updatedRow = Array.isArray(data) ? data[0] : data;
+  return {
+    data: (updatedRow as AdminProfileSummary) ?? {
+      id: targetProfileId,
+      username: '',
+      global_name: null,
+      avatar_url: null,
+      email: null,
+      discord_username: null,
+      plan: updates.plan === 'premium' ? 'premium' : 'free',
+      views: 0,
+      monthly_views: 0,
+      is_admin: Boolean(updates.is_admin),
+      custom_roles: cleanRoles,
+    },
+  };
 }
 
 export async function uploadProfileMedia(
@@ -757,6 +864,29 @@ export async function recordUniqueProfileView(
     return {counted: data !== false};
   } catch {
     return {counted: false};
+  }
+}
+
+export async function recordDailySiteVisitOncePerSession(): Promise<void> {
+  if (!supabase || typeof window === 'undefined') return;
+  const sessionKey = 'clouskee_daily_site_visit_recorded';
+
+  try {
+    if (window.sessionStorage.getItem(sessionKey) === '1') {
+      return;
+    }
+    window.sessionStorage.setItem(sessionKey, '1');
+  } catch {
+    // Ignore sessionStorage restrictions
+  }
+
+  try {
+    const clientIp = await detectVisitorIp();
+    await supabase.rpc('record_daily_site_visit', {
+      client_ip: clientIp,
+    });
+  } catch {
+    // Ignore network or RPC restrictions silently
   }
 }
 

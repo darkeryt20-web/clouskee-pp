@@ -7,10 +7,13 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ShieldCheck,
   User,
   X,
 } from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
+import {auth} from '../lib/firebase';
+import {verifyAdminAccessInSupabase} from '../lib/supabase';
 import {sanitizeExternalUrl} from '../lib/domain';
 
 const LOGO_URL =
@@ -19,9 +22,10 @@ const DISCORD_URL = 'https://discord.gg/FDQrVXEdbK';
 
 export function Navbar() {
   const navigate = useNavigate();
-  const {activeProfile, signOut} = useAuth();
+  const {activeProfile, firebaseUser, signOut} = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [verifiedIsAdmin, setVerifiedIsAdmin] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +52,50 @@ export function Navbar() {
       window.removeEventListener('keydown', handleEscape);
     };
   }, [accountMenuOpen]);
+
+  useEffect(() => {
+    if (!activeProfile) {
+      setVerifiedIsAdmin(false);
+      return;
+    }
+
+    const verifiedFirebaseUid =
+      auth?.currentUser?.uid ??
+      firebaseUser?.uid ??
+      activeProfile.firebase_uid ??
+      null;
+    const verifiedDiscordId = activeProfile.discord_id ?? null;
+
+    if (!verifiedFirebaseUid && !verifiedDiscordId) {
+      setVerifiedIsAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+    verifyAdminAccessInSupabase({
+      firebaseUid: verifiedFirebaseUid,
+      discordId: verifiedDiscordId,
+    })
+      .then((res) => {
+        if (!cancelled) {
+          setVerifiedIsAdmin(res.isAdmin === true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVerifiedIsAdmin(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeProfile,
+    activeProfile?.firebase_uid,
+    activeProfile?.discord_id,
+    firebaseUser?.uid,
+  ]);
 
   const safeAvatar = sanitizeExternalUrl(activeProfile?.avatar_url);
   const displayHandle =
@@ -207,6 +255,18 @@ export function Navbar() {
                     <span>Dashboard</span>
                   </Link>
 
+                  {verifiedIsAdmin && (
+                    <Link
+                      role="menuitem"
+                      to="/admin"
+                      onClick={closeAccountMenu}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-amber-200 hover:text-white hover:bg-amber-500/15 transition-colors"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Admin Panel</span>
+                    </Link>
+                  )}
+
                   <div className="h-px bg-purple-500/15 my-1" />
 
                   <button
@@ -296,6 +356,16 @@ export function Navbar() {
                   Sign Out
                 </button>
               </div>
+              {verifiedIsAdmin && (
+                <Link
+                  to="/admin"
+                  onClick={closeMobile}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-amber-400/35 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-200 hover:text-white"
+                >
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <span>Admin Panel</span>
+                </Link>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2 pt-1">
