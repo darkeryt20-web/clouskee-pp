@@ -73,6 +73,7 @@ export function detectCloudinaryResourceType(file) {
  *   resourceType?: 'image' | 'video' | 'auto' | 'raw',
  *   uploadPreset?: string,
  *   cloudName?: string,
+ *   onProgress?: (percent: number) => void,
  * }} [options]
  * @returns {Promise<{ secure_url: string, public_id: string, resource_type: string }>}
  */
@@ -110,30 +111,93 @@ export async function uploadToCloudinary(file, options = {}) {
     formData.append('folder', String(options.folder).trim());
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    body: formData,
+  if (typeof options.onProgress !== 'function') {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(
+        body?.error?.message || `Cloudinary upload failed (${response.status})`,
+      );
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (!payload?.secure_url) {
+      throw new Error(
+        'Cloudinary upload failed: response did not include a media URL.',
+      );
+    }
+
+    return {
+      secure_url: sanitizeCloudinaryMediaUrl(payload.secure_url),
+      public_id: (payload.public_id || '').replace(TRAILING_ASSET_EXT_RE, ''),
+      resource_type: payload.resource_type || resourceType,
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', endpoint);
+
+    options.onProgress(0);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const pct = Math.min(
+          99,
+          Math.max(1, Math.round((event.loaded / event.total) * 100)),
+        );
+        options.onProgress(pct);
+      }
+    };
+
+    xhr.onload = () => {
+      let body = {};
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        body = {};
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(
+          new Error(
+            body?.error?.message || `Cloudinary upload failed (${xhr.status})`,
+          ),
+        );
+        return;
+      }
+
+      if (!body?.secure_url) {
+        reject(
+          new Error(
+            'Cloudinary upload failed: response did not include a media URL.',
+          ),
+        );
+        return;
+      }
+
+      options.onProgress(100);
+      resolve({
+        secure_url: sanitizeCloudinaryMediaUrl(body.secure_url),
+        public_id: (body.public_id || '').replace(TRAILING_ASSET_EXT_RE, ''),
+        resource_type: body.resource_type || resourceType,
+      });
+    };
+
+    xhr.onerror = () => {
+      reject(
+        new Error(
+          'Network error while uploading to Cloudinary. Please try again.',
+        ),
+      );
+    };
+
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(
-      body?.error?.message || `Cloudinary upload failed (${response.status})`,
-    );
-  }
-
-  const payload = await response.json().catch(() => ({}));
-  if (!payload?.secure_url) {
-    throw new Error(
-      'Cloudinary upload failed: response did not include a media URL.',
-    );
-  }
-
-  return {
-    secure_url: sanitizeCloudinaryMediaUrl(payload.secure_url),
-    public_id: (payload.public_id || '').replace(TRAILING_ASSET_EXT_RE, ''),
-    resource_type: payload.resource_type || resourceType,
-  };
 }
 
 /**
