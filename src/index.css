@@ -158,6 +158,42 @@
   background-size: 560px 420px;
 }
 
+@keyframes profile-card-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes profile-item-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-profile-card-enter {
+  animation: profile-card-enter 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-profile-item-enter {
+  animation: profile-item-enter 0.44s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.reduce-motion *,
+.reduce-motion {
+  animation: none !important;
+  transition-duration: 0.01ms !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-astronaut-float,
   .animate-astronaut-shadow,
@@ -167,6 +203,8 @@
   .animate-orb-drift,
   .animate-orb-drift-reverse,
   .animate-starfield-drift,
+  .animate-profile-card-enter,
+  .animate-profile-item-enter,
   .group:hover .group-hover-shimmer {
     animation: none;
   }

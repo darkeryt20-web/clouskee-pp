@@ -565,6 +565,11 @@ export function DashboardPage() {
     links,
   ]);
 
+  const liveBotActivity = useMemo(
+    () => parseDiscordActivity(discordActivity),
+    [discordActivity],
+  );
+
   if (loading) {
     return <LoadingSpinner label="Loading your dashboard..." />;
   }
@@ -1036,10 +1041,6 @@ export function DashboardPage() {
     activeProfile.firebase_uid || firebaseUser?.uid,
   );
   const hasDiscordLinked = Boolean(activeProfile.discord_id);
-  const liveBotActivity = useMemo(
-    () => parseDiscordActivity(discordActivity),
-    [discordActivity],
-  );
   const isUsernameDirty =
     sanitizeHandle(draftUsername) !== activeProfile.username.toLowerCase();
 

@@ -1,6 +1,6 @@
 import {Cloudinary} from '@cloudinary/url-gen';
 import {format, quality} from '@cloudinary/url-gen/actions/delivery';
-import {fill} from '@cloudinary/url-gen/actions/resize';
+import {fill, limitFit} from '@cloudinary/url-gen/actions/resize';
 
 export const CLOUDINARY_CLOUD_NAME =
   import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'gwz68wfo';
@@ -271,7 +271,7 @@ export function getCloudinaryVideoSources(url) {
  * Build an optimized @cloudinary/url-gen CloudinaryImage when given a Cloudinary image URL.
  *
  * @param {string | null | undefined} url
- * @param {{ width?: number, height?: number }} [options]
+ * @param {{ width?: number, height?: number, maxWidth?: number, lowData?: boolean }} [options]
  */
 export function buildCloudinaryImage(url, options = {}) {
   const asset = parseCloudinaryAsset(url);
@@ -285,10 +285,12 @@ export function buildCloudinaryImage(url, options = {}) {
   const img = client
     .image(asset.publicId)
     .delivery(format('auto'))
-    .delivery(quality('auto'));
+    .delivery(quality(options.lowData ? 'auto:eco' : 'auto'));
 
   if (options.width && options.height) {
     img.resize(fill().width(options.width).height(options.height));
+  } else if (options.maxWidth) {
+    img.resize(limitFit().width(options.maxWidth));
   }
 
   return img;

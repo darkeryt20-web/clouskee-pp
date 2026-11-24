@@ -17,6 +17,9 @@ interface SmartImageProps {
   style?: CSSProperties;
   width?: number;
   height?: number;
+  maxWidth?: number;
+  lowData?: boolean;
+  priority?: boolean;
   ariaHidden?: boolean;
   fallback?: ReactNode;
   onErrorFallback?: () => void;
@@ -33,6 +36,9 @@ export function SmartImage({
   style,
   width,
   height,
+  maxWidth,
+  lowData = false,
+  priority = false,
   ariaHidden,
   fallback = null,
   onErrorFallback,
@@ -45,8 +51,11 @@ export function SmartImage({
   }, [safeSrc]);
 
   const cldImg = useMemo(
-    () => (safeSrc ? buildCloudinaryImage(safeSrc, {width, height}) : null),
-    [safeSrc, width, height],
+    () =>
+      safeSrc
+        ? buildCloudinaryImage(safeSrc, {width, height, maxWidth, lowData})
+        : null,
+    [safeSrc, width, height, maxWidth, lowData],
   );
 
   if (!safeSrc || failedSrc === safeSrc) {
@@ -64,6 +73,8 @@ export function SmartImage({
         cldImg={cldImg}
         alt={alt}
         aria-hidden={ariaHidden}
+        loading={priority ? 'eager' : 'lazy'}
+        decoding="async"
         referrerPolicy="no-referrer"
         onError={handleError}
         className={className}
@@ -77,6 +88,8 @@ export function SmartImage({
       src={safeSrc}
       alt={alt}
       aria-hidden={ariaHidden}
+      loading={priority ? 'eager' : 'lazy'}
+      decoding="async"
       referrerPolicy="no-referrer"
       onError={handleError}
       className={className}

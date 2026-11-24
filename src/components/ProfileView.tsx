@@ -24,6 +24,7 @@ import {
 import {CustomCursorLayer, useFinePointer} from './CustomCursorLayer';
 import {LightningCursorCanvas} from './LightningCursorCanvas';
 import {SmartBackgroundVideo, SmartImage} from './CloudinaryMedia';
+import {usePerformanceProfile} from '../hooks/usePerformanceProfile';
 
 const DEFAULT_DOCUMENT_TITLE =
   'Clouskee PP — Next-Gen Profile Pages & Secure File Hosting';
@@ -280,6 +281,7 @@ interface ProfileViewProps {
 }
 
 export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
+  const perf = usePerformanceProfile();
   const isFinePointer = useFinePointer();
 
   const clickToEnterEnabled = profile.click_to_enter_enabled !== false;
@@ -289,6 +291,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   const [hasEntered, setHasEntered] = useState(
     () => isPreview || !clickToEnterEnabled,
   );
+  const [gateExiting, setGateExiting] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -297,6 +300,12 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const gateTimerRef = useRef<number | null>(null);
+
+  const lowDataMode = !isPreview && perf.isLowData;
+  const skipBgVideo = !isPreview && perf.skipBackgroundVideo;
+  const reduceAnimations = !isPreview && perf.reduceAnimations;
+  const constrainedGpu = !isPreview && perf.isConstrainedDevice;
 
   const safeAvatar = sanitizeExternalUrl(profile.avatar_url);
   const safeDecoration = sanitizeExternalUrl(profile.avatar_decoration_url);
@@ -309,13 +318,18 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   );
   const fontFamily = sanitizeFontFamily(profile.font_family);
   const bgOpacity = Math.min(95, Math.max(0, profile.bg_opacity ?? 55)) / 100;
-  const bgBlur = Math.min(24, Math.max(0, profile.bg_blur ?? 0));
+  const rawBgBlur = Math.min(24, Math.max(0, profile.bg_blur ?? 0));
+  const bgBlur = constrainedGpu ? Math.min(rawBgBlur, 6) : rawBgBlur;
   const cardOpacity =
     Math.min(100, Math.max(20, profile.card_opacity ?? 88)) / 100;
-  const cardBlur = Math.min(32, Math.max(0, profile.card_blur ?? 16));
+  const rawCardBlur = Math.min(32, Math.max(0, profile.card_blur ?? 16));
+  const cardBlur = constrainedGpu ? Math.min(rawCardBlur, 8) : rawCardBlur;
 
   const hasCustomMediaBg = Boolean(
-    profile.bg_type && profile.bg_type !== 'none' && safeBgUrl,
+    profile.bg_type &&
+      profile.bg_type !== 'none' &&
+      safeBgUrl &&
+      !(profile.bg_type === 'video' && skipBgVideo),
   );
 
   const displayName = profile.global_name || profile.username;
@@ -365,12 +379,16 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     : [];
 
   const customCursorEnabled =
-    Boolean(profile.custom_cursor_enabled) && isFinePointer;
+    Boolean(profile.custom_cursor_enabled) &&
+    isFinePointer &&
+    !reduceAnimations;
   const customCursorStyle: CustomCursorStyle =
     profile.custom_cursor_style ?? 'dot_ring';
   const canUseLightningCursor = hasPremiumAccess(profile);
   const lightningCursorEnabled =
-    Boolean(profile.lightning_cursor_enabled) && canUseLightningCursor;
+    Boolean(profile.lightning_cursor_enabled) &&
+    canUseLightningCursor &&
+    !reduceAnimations;
   const lightningCursorColor = sanitizeHexColor(
     profile.lightning_cursor_color,
     '#f43f5e',
@@ -396,20 +414,31 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   }, [isPreview]);
 
   useEffect(() => {
+    if (gateTimerRef.current !== null) {
+      window.clearTimeout(gateTimerRef.current);
+      gateTimerRef.current = null;
+    }
+    setGateExiting(false);
     if (isPreview || !clickToEnterEnabled) {
       setHasEntered(true);
     } else {
       setHasEntered(false);
     }
+    return () => {
+      if (gateTimerRef.current !== null) {
+        window.clearTimeout(gateTimerRef.current);
+        gateTimerRef.current = null;
+      }
+    };
   }, [isPreview, clickToEnterEnabled, profile.username]);
 
   // Always enforce muted=true on background videos on mount/load
   useEffect(() => {
-    if (profile.bg_type === 'video' && videoRef.current) {
+    if (profile.bg_type === 'video' && !skipBgVideo && videoRef.current) {
       videoRef.current.defaultMuted = true;
       videoRef.current.muted = true;
     }
-  }, [profile.bg_type, safeBgUrl]);
+  }, [profile.bg_type, safeBgUrl, skipBgVideo]);
 
   // Reset audio progress when music URL changes
   useEffect(() => {
@@ -418,13 +447,14 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     setIsPlaying(false);
   }, [safeMusicUrl]);
 
-  // Autoplay when gate is disabled and music_autoplay is on (even if music card UI is hidden)
+  // Autoplay when gate is disabled and music_autoplay is on (skip auto-fetch in low-data mode)
   useEffect(() => {
     if (
       isPreview ||
       clickToEnterEnabled ||
       !profile.music_autoplay ||
-      !safeMusicUrl
+      !safeMusicUrl ||
+      lowDataMode
     ) {
       return;
     }
@@ -434,10 +464,26 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
       .play()
       .then(() => setIsPlaying(true))
       .catch(() => setIsPlaying(false));
-  }, [isPreview, clickToEnterEnabled, profile.music_autoplay, safeMusicUrl]);
+  }, [
+    isPreview,
+    clickToEnterEnabled,
+    profile.music_autoplay,
+    safeMusicUrl,
+    lowDataMode,
+  ]);
 
   const handleEnterSite = () => {
-    setHasEntered(true);
+    if (reduceAnimations) {
+      setHasEntered(true);
+    } else if (!gateExiting) {
+      setGateExiting(true);
+      gateTimerRef.current = window.setTimeout(() => {
+        gateTimerRef.current = null;
+        setHasEntered(true);
+        setGateExiting(false);
+      }, 260);
+    }
+
     if (videoRef.current) {
       videoRef.current.defaultMuted = true;
       videoRef.current.muted = true;
@@ -585,13 +631,13 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           : `relative min-h-screen overflow-hidden px-4 sm:px-6 ${
               isCornerTop ? 'pt-28 sm:pt-20' : 'py-14'
             } ${isCornerBottom ? 'pb-28 sm:pb-20' : 'py-14'}`
-      } ${
-        customCursorEnabled ? 'cursor-none [&_*]:cursor-none' : ''
+      } ${customCursorEnabled ? 'cursor-none [&_*]:cursor-none' : ''} ${
+        reduceAnimations ? 'reduce-motion' : ''
       } bg-[#09090c] flex items-center justify-center`}
       style={{fontFamily: `"${fontFamily}", sans-serif`}}
     >
-      {/* Background Video (Strictly Muted) / Image Layer */}
-      {profile.bg_type === 'video' && safeBgUrl && (
+      {/* Background Video (Skipped in Low-Data / Low-Spec / Reduced-Motion Mode) */}
+      {profile.bg_type === 'video' && safeBgUrl && !skipBgVideo && (
         <SmartBackgroundVideo
           src={safeBgUrl}
           videoRef={videoRef}
@@ -605,12 +651,15 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           src={safeBgUrl}
           alt=""
           ariaHidden
+          priority
+          lowData={lowDataMode}
+          maxWidth={lowDataMode ? 960 : 1920}
           className={`${bgPositionClass} w-full h-full object-cover pointer-events-none scale-105`}
           style={{filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined}}
         />
       )}
 
-      {/* Clean Neutral Dark Overlay */}
+      {/* Clean Neutral Dark Overlay / Lightweight Gradient Fallback */}
       <div
         aria-hidden="true"
         className={`${bgPositionClass} pointer-events-none`}
@@ -619,18 +668,24 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             ? `rgba(8, 8, 12, ${bgOpacity})`
             : 'transparent',
           backgroundImage: !hasCustomMediaBg
-            ? `radial-gradient(circle at 50% 25%, ${accentColor}20 0%, rgba(9, 9, 12, 0) 68%)`
+            ? `radial-gradient(circle at 50% 22%, ${accentColor}26 0%, rgba(9, 9, 12, 0.96) 68%)`
             : undefined,
         }}
       />
 
-      {/* Hidden Audio Element — Always Active Even When Music Card Is Off */}
+      {/* Hidden Audio Element — On-Demand Loading Until "Click to Enter" */}
       {safeMusicUrl && (
         <audio
           ref={audioRef}
           src={safeMusicUrl}
           loop
-          preload="metadata"
+          preload={
+            clickToEnterEnabled && !hasEntered
+              ? 'none'
+              : constrainedGpu
+                ? 'none'
+                : 'metadata'
+          }
           onLoadedMetadata={(e) => {
             const el = e.currentTarget;
             if (Number.isFinite(el.duration)) setDuration(el.duration);
@@ -675,33 +730,58 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
       <div
         className={`relative z-10 w-full ${
           isPreview ? 'max-w-sm' : 'max-w-lg'
-        } mx-auto`}
+        } mx-auto ${
+          !isPreview && !reduceAnimations ? 'animate-profile-card-enter' : ''
+        }`}
       >
         <div
-          className="rounded-3xl border p-6 sm:p-8 transition-all"
+          className="relative rounded-3xl border p-6 sm:p-8 transition-all duration-300"
           style={{
             backgroundColor: `rgba(12, 12, 16, ${cardOpacity})`,
-            backdropFilter: `blur(${cardBlur}px)`,
-            WebkitBackdropFilter: `blur(${cardBlur}px)`,
-            borderColor: 'rgba(255, 255, 255, 0.12)',
-            boxShadow: '0 24px 70px rgba(0, 0, 0, 0.55)',
+            backdropFilter:
+              cardBlur > 0 ? `blur(${cardBlur}px)` : undefined,
+            WebkitBackdropFilter:
+              cardBlur > 0 ? `blur(${cardBlur}px)` : undefined,
+            borderColor: 'rgba(255, 255, 255, 0.13)',
+            boxShadow:
+              '0 24px 64px rgba(0, 0, 0, 0.56), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
           }}
         >
+          {/* Subtle Top Accent Edge Highlight */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-10 top-0 h-px opacity-75"
+            style={{
+              background: `linear-gradient(90deg, transparent, ${accentColor}aa, transparent)`,
+            }}
+          />
+
           {/* Avatar + Discord Avatar Decoration Overlay */}
           <div className="flex flex-col items-center text-center">
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center group">
+              {!constrainedGpu && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-full opacity-55 transition-opacity duration-300 group-hover:opacity-80"
+                  style={{
+                    background: `radial-gradient(circle, ${accentColor}38 0%, transparent 72%)`,
+                  }}
+                />
+              )}
               <SmartImage
                 src={safeAvatar}
                 alt={`${displayName} avatar`}
                 width={256}
                 height={256}
-                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2"
-                style={{borderColor: `${accentColor}77`}}
+                lowData={lowDataMode}
+                priority
+                className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 transition-transform duration-300 group-hover:scale-[1.03]"
+                style={{borderColor: `${accentColor}88`}}
                 fallback={
                   <div
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white"
+                    className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 flex items-center justify-center text-2xl sm:text-3xl font-extrabold text-white transition-transform duration-300 group-hover:scale-[1.03]"
                     style={{
-                      borderColor: `${accentColor}77`,
+                      borderColor: `${accentColor}88`,
                       background: `linear-gradient(135deg, ${accentColor}, #18181b)`,
                     }}
                   >
@@ -715,6 +795,8 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
                   src={safeDecoration}
                   alt=""
                   ariaHidden
+                  lowData={lowDataMode}
+                  priority
                   className="pointer-events-none select-none absolute inset-0 w-24 h-24 sm:w-28 sm:h-28 object-contain"
                 />
               )}
@@ -724,7 +806,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             <GlobalNameHeading profile={profile} accentColor={accentColor} />
 
             <p
-              className="mt-1 text-xs font-mono"
+              className="mt-1 text-xs font-mono tracking-wide opacity-90"
               style={{color: accentColor}}
             >
               @{profile.username}
@@ -736,7 +818,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
                 {customRoles.map((role, idx) => (
                   <span
                     key={`${role.name}-${idx}`}
-                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-white"
+                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-white transition-transform duration-200 hover:-translate-y-0.5"
                     style={{
                       backgroundColor: `${role.color}22`,
                       borderColor: `${role.color}66`,
@@ -753,7 +835,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
                 {badges.map((badge) => (
                   <span
                     key={badge}
-                    className="inline-flex items-center rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-semibold text-zinc-100"
+                    className="inline-flex items-center rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-semibold text-zinc-100 transition-colors duration-200 hover:bg-white/15"
                   >
                     {badge}
                   </span>
@@ -776,9 +858,9 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             )}
           </div>
 
-          {/* Social Links — Clean Horizontal Icon/Logo-Only Row */}
+          {/* Social Links — Refined Glass Icon Row */}
           {links.length > 0 && (
-            <div className="mt-6 pt-1 flex flex-wrap items-center justify-center gap-4 sm:gap-5">
+            <div className="mt-6 pt-1 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
               {links.map((link, idx) => {
                 const safeHref = sanitizeExternalUrl(link.url);
                 if (!safeHref) return null;
@@ -798,15 +880,15 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
                     rel="noopener noreferrer"
                     title={tooltipText}
                     aria-label={tooltipText}
-                    className="group relative inline-flex items-center justify-center text-white/85 hover:text-white transition-all duration-150 hover:scale-115 hover:-translate-y-0.5 focus:outline-none"
+                    className="group relative inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white/[0.04] hover:bg-white/[0.11] border border-white/10 hover:border-white/25 text-white/85 hover:text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
                   >
                     <SocialPresetIcon
                       preset={preset}
                       customIconUrl={link.customIconUrl}
                       label={tooltipText}
-                      className="w-6 h-6 sm:w-7 sm:h-7 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]"
+                      className="w-5 h-5 sm:w-[22px] sm:h-[22px] drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]"
                     />
-                    <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-900/95 border border-white/15 px-2 py-0.5 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                    <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-900/95 border border-white/15 px-2 py-0.5 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 group-hover:-translate-y-0.5 transition-all duration-150 shadow-lg">
                       {tooltipText}
                     </span>
                   </a>
@@ -829,7 +911,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           {/* Views Count at Bottom-Left of Profile Card */}
           {showViewsCount && (
             <div className="mt-6 flex items-center justify-start">
-              <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-300 tabular-nums">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] border border-white/10 px-2.5 py-1 text-xs font-mono text-zinc-300 tabular-nums">
                 <Eye className="w-3.5 h-3.5" style={{color: accentColor}} />
                 <span>{(profile.views ?? 0).toLocaleString()}</span>
               </span>
@@ -849,7 +931,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           )}
       </div>
 
-      {/* Full-Screen "Click to Enter" Normal Plain Text Overlay (Public Profile Only) */}
+      {/* Full-Screen "Click to Enter" Gate (Public Profile Only) */}
       {!isPreview && clickToEnterEnabled && !hasEntered && (
         <div
           role="button"
@@ -862,9 +944,14 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
             }
           }}
           aria-label={clickToEnterText}
-          className="fixed inset-0 z-50 bg-black/82 backdrop-blur-md flex items-center justify-center px-6 cursor-pointer select-none"
+          className={`fixed inset-0 z-50 bg-black/85 flex items-center justify-center px-6 cursor-pointer select-none transition-opacity duration-300 ${
+            constrainedGpu ? '' : 'backdrop-blur-md'
+          } ${gateExiting ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          style={{
+            backgroundImage: `radial-gradient(circle at 50% 50%, ${accentColor}1c 0%, rgba(0, 0, 0, 0.88) 58%)`,
+          }}
         >
-          <span className="text-base sm:text-lg font-medium tracking-wide text-white/90 hover:text-white transition-opacity">
+          <span className="text-base sm:text-lg font-medium tracking-wide text-white/90 hover:text-white transition-all duration-200 hover:scale-[1.03]">
             {clickToEnterText}
           </span>
         </div>
