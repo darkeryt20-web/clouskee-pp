@@ -1,4 +1,12 @@
-import {ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState} from 'react';
+import {
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {Link, Navigate} from 'react-router-dom';
 import {
   AlertCircle,
@@ -39,6 +47,7 @@ import {
   DISCORD_ACTIVITY_Z_DEFAULT,
   DISCORD_ACTIVITY_Z_MAX,
   DISCORD_ACTIVITY_Z_MIN,
+  DiscordActivitySnapshot,
   GlobalNameEffect,
   hasPremiumAccess,
   MusicCardPosition,
@@ -70,6 +79,7 @@ import {
   DISCORD_ACTIVITY_POSITIONS,
   parseDiscordActivity,
 } from '../components/DiscordActivityCard';
+import {useRealtimeDiscordActivity} from '../hooks/useRealtimeDiscordActivity';
 import {CURSOR_STYLES} from '../components/CustomCursorLayer';
 import {
   getPresetMeta,
@@ -564,6 +574,71 @@ export function DashboardPage() {
     discordActivityZIndex,
     links,
   ]);
+
+  const lastBaselineDiscordRef = useRef<{
+    enabled: boolean;
+    position: MusicCardPosition;
+    zIndex: number;
+  }>({
+    enabled: true,
+    position: 'profile_card_bottom',
+    zIndex: DISCORD_ACTIVITY_Z_DEFAULT,
+  });
+
+  useEffect(() => {
+    if (!activeProfile) return;
+    lastBaselineDiscordRef.current = {
+      enabled: activeProfile.discord_activity_enabled !== false,
+      position: normalizeDiscordActivityPosition(
+        activeProfile.discord_activity_position,
+      ),
+      zIndex: clampDiscordActivityZIndex(activeProfile.discord_activity_z_index),
+    };
+  }, [
+    activeProfile,
+    activeProfile?.discord_activity_enabled,
+    activeProfile?.discord_activity_position,
+    activeProfile?.discord_activity_z_index,
+  ]);
+
+  const handleRealtimeDiscordUpdate = useCallback(
+    (patch: DiscordActivitySnapshot) => {
+      if ('discord_activity' in patch) {
+        setDiscordActivity(patch.discord_activity ?? null);
+      }
+      if ('discord_activity_enabled' in patch) {
+        const nextEnabled = patch.discord_activity_enabled !== false;
+        if (nextEnabled !== lastBaselineDiscordRef.current.enabled) {
+          lastBaselineDiscordRef.current.enabled = nextEnabled;
+          setDiscordActivityEnabled(nextEnabled);
+        }
+      }
+      if ('discord_activity_position' in patch) {
+        const nextPosition = normalizeDiscordActivityPosition(
+          patch.discord_activity_position,
+        );
+        if (nextPosition !== lastBaselineDiscordRef.current.position) {
+          lastBaselineDiscordRef.current.position = nextPosition;
+          setDiscordActivityPosition(nextPosition);
+        }
+      }
+      if ('discord_activity_z_index' in patch) {
+        const nextZIndex = clampDiscordActivityZIndex(
+          patch.discord_activity_z_index,
+        );
+        if (nextZIndex !== lastBaselineDiscordRef.current.zIndex) {
+          lastBaselineDiscordRef.current.zIndex = nextZIndex;
+          setDiscordActivityZIndex(nextZIndex);
+        }
+      }
+    },
+    [],
+  );
+
+  useRealtimeDiscordActivity({
+    profileId: activeProfile?.id ?? null,
+    onUpdate: handleRealtimeDiscordUpdate,
+  });
 
   const liveBotActivity = useMemo(
     () => parseDiscordActivity(discordActivity),

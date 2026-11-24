@@ -1016,3 +1016,49 @@ export async function fetchLeaderboardProfiles(
 
   return {data: (data as ProfileRecord[]) ?? []};
 }
+
+export interface DiscordActivitySnapshot {
+  discord_activity?: DiscordActivityData | string | null;
+  discord_activity_enabled?: boolean | null;
+  discord_activity_position?: MusicCardPosition | null;
+  discord_activity_z_index?: number | null;
+}
+
+export async function fetchDiscordActivitySnapshot(
+  profileId: string,
+): Promise<DiscordActivitySnapshot | null> {
+  if (!supabase || !profileId || profileId.startsWith('local-')) {
+    return null;
+  }
+
+  const {data, error} = await supabase
+    .from('profiles')
+    .select(
+      'discord_activity, discord_activity_enabled, discord_activity_position, discord_activity_z_index',
+    )
+    .eq('id', profileId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  const row = data as Record<string, unknown>;
+  return {
+    discord_activity:
+      (row.discord_activity as DiscordActivityData | string | null) ?? null,
+    discord_activity_enabled:
+      typeof row.discord_activity_enabled === 'boolean'
+        ? row.discord_activity_enabled
+        : null,
+    discord_activity_position:
+      typeof row.discord_activity_position === 'string'
+        ? normalizeDiscordActivityPosition(row.discord_activity_position)
+        : null,
+    discord_activity_z_index:
+      typeof row.discord_activity_z_index === 'number'
+        ? clampDiscordActivityZIndex(row.discord_activity_z_index)
+        : null,
+  };
+}
+

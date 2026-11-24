@@ -1,14 +1,16 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import {Link, useParams} from 'react-router-dom';
 import {Loader2, Sparkles} from 'lucide-react';
 import {useAuth} from '../context/AuthContext';
 import {
+  DiscordActivitySnapshot,
   getProfileByUsername,
   isSupabaseConfigured,
   ProfileRecord,
   recordUniqueProfileView,
 } from '../lib/supabase';
 import {ProfileView} from '../components/ProfileView';
+import {useRealtimeDiscordActivity} from '../hooks/useRealtimeDiscordActivity';
 
 export function ProfilePage() {
   const {username = ''} = useParams<{username: string}>();
@@ -17,6 +19,18 @@ export function ProfilePage() {
   const [profile, setProfile] = useState<ProfileRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  const handleRealtimeDiscordUpdate = useCallback(
+    (patch: DiscordActivitySnapshot) => {
+      setProfile((prev) => (prev ? {...prev, ...patch} : prev));
+    },
+    [],
+  );
+
+  useRealtimeDiscordActivity({
+    profileId: profile?.id ?? null,
+    onUpdate: handleRealtimeDiscordUpdate,
+  });
 
   useEffect(() => {
     let cancelled = false;
