@@ -122,7 +122,7 @@ const TABS: {id: DashboardTab; label: string; icon: typeof User}[] = [
   {id: 'appearance', label: 'Appearance', icon: Palette},
   {id: 'audio', label: 'Audio', icon: Music},
   {id: 'links', label: 'Links', icon: Link2},
-  {id: 'discord', label: 'Discord', icon: MessageCircle},
+  {id: 'discord', label: 'Discord Activity', icon: MessageCircle},
   {id: 'connections', label: 'Connections', icon: ShieldCheck},
 ];
 
@@ -219,7 +219,9 @@ export function DashboardPage() {
   const [links, setLinks] = useState<ProfileLinkItem[]>([]);
 
   // Discord Activity state
-  const [discordActivityEnabled, setDiscordActivityEnabled] = useState(false);
+  const [discordActivity, setDiscordActivity] =
+    useState<ProfileRecord['discord_activity']>(null);
+  const [discordActivityEnabled, setDiscordActivityEnabled] = useState(true);
   const [discordActivityPosition, setDiscordActivityPosition] =
     useState<MusicCardPosition>('profile_card_bottom');
   const [discordActivityZIndex, setDiscordActivityZIndex] = useState<number>(
@@ -347,7 +349,8 @@ export function DashboardPage() {
         : [],
     );
 
-    setDiscordActivityEnabled(activeProfile.discord_activity_enabled === true);
+    setDiscordActivity(activeProfile.discord_activity ?? null);
+    setDiscordActivityEnabled(activeProfile.discord_activity_enabled !== false);
     setDiscordActivityPosition(
       normalizeDiscordActivityPosition(activeProfile.discord_activity_position),
     );
@@ -355,6 +358,11 @@ export function DashboardPage() {
       clampDiscordActivityZIndex(activeProfile.discord_activity_z_index),
     );
   }, [activeProfile]);
+
+  useEffect(() => {
+    if (!activeProfile) return;
+    setDiscordActivity(activeProfile.discord_activity ?? null);
+  }, [activeProfile, activeProfile?.discord_activity]);
 
   // Re-verify Admin permission directly against Supabase profiles
   useEffect(() => {
@@ -493,6 +501,7 @@ export function DashboardPage() {
       music_show_controls: musicShowControls,
       music_show_title: musicShowTitle,
       music_show_artist: musicShowArtist,
+      discord_activity: discordActivity,
       discord_activity_enabled: discordActivityEnabled,
       discord_activity_position: discordActivityPosition,
       discord_activity_z_index: clampDiscordActivityZIndex(
@@ -549,6 +558,7 @@ export function DashboardPage() {
     musicShowControls,
     musicShowTitle,
     musicShowArtist,
+    discordActivity,
     discordActivityEnabled,
     discordActivityPosition,
     discordActivityZIndex,
@@ -1027,8 +1037,8 @@ export function DashboardPage() {
   );
   const hasDiscordLinked = Boolean(activeProfile.discord_id);
   const liveBotActivity = useMemo(
-    () => parseDiscordActivity(activeProfile.discord_activity),
-    [activeProfile.discord_activity],
+    () => parseDiscordActivity(discordActivity),
+    [discordActivity],
   );
   const isUsernameDirty =
     sanitizeHandle(draftUsername) !== activeProfile.username.toLowerCase();
@@ -2933,6 +2943,16 @@ export function DashboardPage() {
               {/* TAB 5: DISCORD ACTIVITY */}
               {activeTab === 'discord' && (
                 <div className="space-y-5">
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-white">
+                      Discord Activity
+                    </h2>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Configure how your live Discord activity appears on your
+                      profile card and page.
+                    </p>
+                  </div>
+
                   {/* Discord Link Status & Saved Discord ID */}
                   <div className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-start gap-3 min-w-0">
@@ -3030,15 +3050,18 @@ export function DashboardPage() {
                       Current Synced Activity
                     </span>
                     {liveBotActivity ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 truncate max-w-[60%]">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 truncate max-w-[65%]">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                         <span className="truncate">
-                          {liveBotActivity.verb} {liveBotActivity.name}
+                          {liveBotActivity.verb} · {liveBotActivity.name}
+                          {liveBotActivity.details
+                            ? ` (${liveBotActivity.details})`
+                            : ''}
                         </span>
                       </span>
                     ) : (
                       <span className="text-xs text-slate-400">
-                        No active activity synced yet (hidden on public page)
+                        No active Discord activity right now
                       </span>
                     )}
                   </div>

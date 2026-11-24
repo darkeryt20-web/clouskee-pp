@@ -337,7 +337,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   );
   const showVisibleMusicCard = musicCardEnabled && hasMusicMetadata;
 
-  const discordActivityEnabled = profile.discord_activity_enabled === true;
+  const discordActivityEnabled = profile.discord_activity_enabled !== false;
   const parsedDiscordActivity = useMemo(
     () => parseDiscordActivity(profile.discord_activity),
     [profile.discord_activity],

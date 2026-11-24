@@ -323,7 +323,7 @@ export function DiscordActivityCard({
   isPreview = false,
   className = '',
 }: DiscordActivityCardProps) {
-  const isEnabled = profile.discord_activity_enabled === true;
+  const isEnabled = profile.discord_activity_enabled !== false;
   const parsedLive = useMemo(
     () => parseDiscordActivity(profile.discord_activity),
     [profile.discord_activity],
