@@ -64,6 +64,68 @@ export interface CustomRoleBadge {
   color: string;
 }
 
+export interface DiscordActivityAssets {
+  large_image?: string | null;
+  large_text?: string | null;
+  small_image?: string | null;
+  small_text?: string | null;
+}
+
+export interface DiscordActivityTimestamps {
+  start?: number | string | null;
+  end?: number | string | null;
+}
+
+export interface DiscordActivityData {
+  active?: boolean | null;
+  name?: string | null;
+  type?: number | string | null;
+  details?: string | null;
+  state?: string | null;
+  application_id?: string | null;
+  url?: string | null;
+  emoji?:
+    | {name?: string | null; id?: string | null; animated?: boolean | null}
+    | string
+    | null;
+  assets?: DiscordActivityAssets | null;
+  timestamps?: DiscordActivityTimestamps | null;
+  updated_at?: string | null;
+}
+
+export const DISCORD_ACTIVITY_Z_MIN = 4000;
+export const DISCORD_ACTIVITY_Z_MAX = 5000;
+export const DISCORD_ACTIVITY_Z_DEFAULT = 4500;
+
+export function clampDiscordActivityZIndex(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DISCORD_ACTIVITY_Z_DEFAULT;
+  return Math.min(
+    DISCORD_ACTIVITY_Z_MAX,
+    Math.max(DISCORD_ACTIVITY_Z_MIN, Math.round(numeric)),
+  );
+}
+
+export function normalizeDiscordActivityPosition(
+  pos: string | null | undefined,
+): MusicCardPosition {
+  if (pos === 'profile_top' || pos === 'profile_card_on') {
+    return 'profile_card_on';
+  }
+  if (pos === 'profile_bottom' || pos === 'profile_card_bottom') {
+    return 'profile_card_bottom';
+  }
+  if (
+    pos === 'page_top_left' ||
+    pos === 'page_top_right' ||
+    pos === 'page_bottom_left' ||
+    pos === 'page_bottom_right'
+  ) {
+    return pos;
+  }
+  return 'profile_card_bottom';
+}
+
 export interface ProfileRecord {
   id: string;
   firebase_uid: string | null;
@@ -91,6 +153,10 @@ export interface ProfileRecord {
   discord_global_name: string | null;
   discord_avatar: string | null;
   discord_avatar_decoration: string | null;
+  discord_activity?: DiscordActivityData | string | null;
+  discord_activity_enabled?: boolean | null;
+  discord_activity_position?: MusicCardPosition | null;
+  discord_activity_z_index?: number | null;
   bio: string | null;
   typewriter_enabled: boolean | null;
   typewriter_texts: string[] | null;
@@ -159,6 +225,7 @@ const PROTECTED_PROFILE_KEYS = new Set<string>([
   'created_at',
   'firebase_uid',
   'discord_id',
+  'discord_activity',
 ]);
 
 const URL_PROFILE_KEYS = [
@@ -225,6 +292,22 @@ export function sanitizeUserProfilePayload(
       });
     }
     safe.links = cleanLinks;
+  }
+
+  if ('discord_activity_enabled' in safe) {
+    safe.discord_activity_enabled = Boolean(safe.discord_activity_enabled);
+  }
+
+  if ('discord_activity_position' in safe) {
+    safe.discord_activity_position = normalizeDiscordActivityPosition(
+      safe.discord_activity_position as string | null | undefined,
+    );
+  }
+
+  if ('discord_activity_z_index' in safe) {
+    safe.discord_activity_z_index = clampDiscordActivityZIndex(
+      safe.discord_activity_z_index,
+    );
   }
 
   return safe as Partial<ProfileRecord>;
@@ -377,6 +460,14 @@ export async function createProfileRecord(
     discord_global_name: payload.discord_global_name ?? null,
     discord_avatar: payload.discord_avatar ?? null,
     discord_avatar_decoration: payload.discord_avatar_decoration ?? null,
+    discord_activity: payload.discord_activity ?? null,
+    discord_activity_enabled: payload.discord_activity_enabled ?? true,
+    discord_activity_position: normalizeDiscordActivityPosition(
+      payload.discord_activity_position,
+    ),
+    discord_activity_z_index: clampDiscordActivityZIndex(
+      payload.discord_activity_z_index,
+    ),
     bio: payload.bio ?? '',
     typewriter_enabled: payload.typewriter_enabled ?? false,
     typewriter_texts: payload.typewriter_texts ?? [],
@@ -420,74 +511,96 @@ export async function createProfileRecord(
     return {data: defaultProfile};
   }
 
+  const insertPayload = {
+    firebase_uid: defaultProfile.firebase_uid,
+    email: defaultProfile.email,
+    username: defaultProfile.username,
+    global_name: defaultProfile.global_name,
+    global_name_typewriter: defaultProfile.global_name_typewriter,
+    global_name_texts: defaultProfile.global_name_texts,
+    global_name_effect: defaultProfile.global_name_effect,
+    global_name_color: defaultProfile.global_name_color,
+    global_name_glow: defaultProfile.global_name_glow,
+    page_title_mode: defaultProfile.page_title_mode,
+    page_title_typewriter: defaultProfile.page_title_typewriter,
+    page_title_texts: defaultProfile.page_title_texts,
+    custom_cursor_enabled: defaultProfile.custom_cursor_enabled,
+    custom_cursor_style: defaultProfile.custom_cursor_style,
+    custom_cursor_url: defaultProfile.custom_cursor_url,
+    lightning_cursor_enabled: defaultProfile.lightning_cursor_enabled,
+    lightning_cursor_color: defaultProfile.lightning_cursor_color,
+    lightning_trail_length: defaultProfile.lightning_trail_length,
+    avatar_url: defaultProfile.avatar_url,
+    avatar_decoration_url: defaultProfile.avatar_decoration_url,
+    discord_id: defaultProfile.discord_id,
+    discord_username: defaultProfile.discord_username,
+    discord_global_name: defaultProfile.discord_global_name,
+    discord_avatar: defaultProfile.discord_avatar,
+    discord_avatar_decoration: defaultProfile.discord_avatar_decoration,
+    discord_activity_enabled: defaultProfile.discord_activity_enabled,
+    discord_activity_position: defaultProfile.discord_activity_position,
+    discord_activity_z_index: defaultProfile.discord_activity_z_index,
+    bio: defaultProfile.bio,
+    typewriter_enabled: defaultProfile.typewriter_enabled,
+    typewriter_texts: defaultProfile.typewriter_texts,
+    click_to_enter_enabled: defaultProfile.click_to_enter_enabled,
+    click_to_enter_text: defaultProfile.click_to_enter_text,
+    show_profile_link: defaultProfile.show_profile_link,
+    show_views_count: defaultProfile.show_views_count,
+    bg_type: defaultProfile.bg_type,
+    bg_url: defaultProfile.bg_url,
+    bg_opacity: defaultProfile.bg_opacity,
+    bg_blur: defaultProfile.bg_blur,
+    card_opacity: defaultProfile.card_opacity,
+    card_blur: defaultProfile.card_blur,
+    accent_color: defaultProfile.accent_color,
+    theme_color: defaultProfile.theme_color,
+    font_family: defaultProfile.font_family,
+    badges: defaultProfile.badges,
+    links: defaultProfile.links,
+    music_card_enabled: defaultProfile.music_card_enabled,
+    music_title: defaultProfile.music_title,
+    music_artist: defaultProfile.music_artist,
+    music_url: defaultProfile.music_url,
+    music_cover: defaultProfile.music_cover,
+    music_autoplay: defaultProfile.music_autoplay,
+    music_position: defaultProfile.music_position,
+    music_style: defaultProfile.music_style,
+    music_show_cover: defaultProfile.music_show_cover,
+    music_show_progress: defaultProfile.music_show_progress,
+    music_show_countdown: defaultProfile.music_show_countdown,
+    music_show_controls: defaultProfile.music_show_controls,
+    music_show_title: defaultProfile.music_show_title,
+    music_show_artist: defaultProfile.music_show_artist,
+    views: defaultProfile.views,
+    monthly_views: defaultProfile.monthly_views,
+    plan: defaultProfile.plan,
+  };
+
   const {data, error} = await supabase
     .from('profiles')
-    .insert({
-      firebase_uid: defaultProfile.firebase_uid,
-      email: defaultProfile.email,
-      username: defaultProfile.username,
-      global_name: defaultProfile.global_name,
-      global_name_typewriter: defaultProfile.global_name_typewriter,
-      global_name_texts: defaultProfile.global_name_texts,
-      global_name_effect: defaultProfile.global_name_effect,
-      global_name_color: defaultProfile.global_name_color,
-      global_name_glow: defaultProfile.global_name_glow,
-      page_title_mode: defaultProfile.page_title_mode,
-      page_title_typewriter: defaultProfile.page_title_typewriter,
-      page_title_texts: defaultProfile.page_title_texts,
-      custom_cursor_enabled: defaultProfile.custom_cursor_enabled,
-      custom_cursor_style: defaultProfile.custom_cursor_style,
-      custom_cursor_url: defaultProfile.custom_cursor_url,
-      lightning_cursor_enabled: defaultProfile.lightning_cursor_enabled,
-      lightning_cursor_color: defaultProfile.lightning_cursor_color,
-      lightning_trail_length: defaultProfile.lightning_trail_length,
-      avatar_url: defaultProfile.avatar_url,
-      avatar_decoration_url: defaultProfile.avatar_decoration_url,
-      discord_id: defaultProfile.discord_id,
-      discord_username: defaultProfile.discord_username,
-      discord_global_name: defaultProfile.discord_global_name,
-      discord_avatar: defaultProfile.discord_avatar,
-      discord_avatar_decoration: defaultProfile.discord_avatar_decoration,
-      bio: defaultProfile.bio,
-      typewriter_enabled: defaultProfile.typewriter_enabled,
-      typewriter_texts: defaultProfile.typewriter_texts,
-      click_to_enter_enabled: defaultProfile.click_to_enter_enabled,
-      click_to_enter_text: defaultProfile.click_to_enter_text,
-      show_profile_link: defaultProfile.show_profile_link,
-      show_views_count: defaultProfile.show_views_count,
-      bg_type: defaultProfile.bg_type,
-      bg_url: defaultProfile.bg_url,
-      bg_opacity: defaultProfile.bg_opacity,
-      bg_blur: defaultProfile.bg_blur,
-      card_opacity: defaultProfile.card_opacity,
-      card_blur: defaultProfile.card_blur,
-      accent_color: defaultProfile.accent_color,
-      theme_color: defaultProfile.theme_color,
-      font_family: defaultProfile.font_family,
-      badges: defaultProfile.badges,
-      links: defaultProfile.links,
-      music_card_enabled: defaultProfile.music_card_enabled,
-      music_title: defaultProfile.music_title,
-      music_artist: defaultProfile.music_artist,
-      music_url: defaultProfile.music_url,
-      music_cover: defaultProfile.music_cover,
-      music_autoplay: defaultProfile.music_autoplay,
-      music_position: defaultProfile.music_position,
-      music_style: defaultProfile.music_style,
-      music_show_cover: defaultProfile.music_show_cover,
-      music_show_progress: defaultProfile.music_show_progress,
-      music_show_countdown: defaultProfile.music_show_countdown,
-      music_show_controls: defaultProfile.music_show_controls,
-      music_show_title: defaultProfile.music_show_title,
-      music_show_artist: defaultProfile.music_show_artist,
-      views: defaultProfile.views,
-      monthly_views: defaultProfile.monthly_views,
-      plan: defaultProfile.plan,
-    })
+    .insert(insertPayload)
     .select('*')
     .single();
 
   if (error) {
+    if (error.message.toLowerCase().includes('discord_activity')) {
+      const {
+        discord_activity_enabled: _e,
+        discord_activity_position: _p,
+        discord_activity_z_index: _z,
+        ...fallbackInsert
+      } = insertPayload;
+      const retry = await supabase
+        .from('profiles')
+        .insert(fallbackInsert)
+        .select('*')
+        .single();
+      if (!retry.error) {
+        return {data: retry.data as ProfileRecord};
+      }
+      return {data: null, error: retry.error.message};
+    }
     return {data: null, error: error.message};
   }
 

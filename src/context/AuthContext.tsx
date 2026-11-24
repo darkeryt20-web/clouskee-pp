@@ -382,18 +382,37 @@ export function AuthProvider({children}: {children: ReactNode}) {
 
       const currentSessionProfile = activeProfile ?? readStoredProfile();
       if (intent === 'link' && currentSessionProfile) {
+        const preservedGlobalName = currentSessionProfile.global_name?.trim()
+          ? currentSessionProfile.global_name
+          : discordUser.discord_global_name;
+
+        const usedPreviousDiscordAvatar =
+          Boolean(currentSessionProfile.discord_avatar) &&
+          currentSessionProfile.avatar_url ===
+            currentSessionProfile.discord_avatar;
+        const preservedAvatarUrl =
+          !currentSessionProfile.avatar_url || usedPreviousDiscordAvatar
+            ? discordUser.discord_avatar || currentSessionProfile.avatar_url
+            : currentSessionProfile.avatar_url;
+
+        const usedPreviousDecoration =
+          Boolean(currentSessionProfile.discord_avatar_decoration) &&
+          currentSessionProfile.avatar_decoration_url ===
+            currentSessionProfile.discord_avatar_decoration;
+        const preservedDecorationUrl =
+          !currentSessionProfile.avatar_decoration_url || usedPreviousDecoration
+            ? discordUser.discord_avatar_decoration
+            : currentSessionProfile.avatar_decoration_url;
+
         const updates: Partial<ProfileRecord> = {
           discord_id: discordUser.discord_id,
           discord_username: discordUser.discord_username,
           discord_global_name: discordUser.discord_global_name,
           discord_avatar: discordUser.discord_avatar,
           discord_avatar_decoration: discordUser.discord_avatar_decoration,
-          global_name:
-            discordUser.discord_global_name ||
-            currentSessionProfile.global_name,
-          avatar_url:
-            discordUser.discord_avatar || currentSessionProfile.avatar_url,
-          avatar_decoration_url: discordUser.discord_avatar_decoration,
+          global_name: preservedGlobalName,
+          avatar_url: preservedAvatarUrl,
+          avatar_decoration_url: preservedDecorationUrl,
         };
 
         if (
@@ -422,19 +441,37 @@ export function AuthProvider({children}: {children: ReactNode}) {
           discordUser.discord_id,
         );
         if (existingByDiscord.data) {
-          const updated = await updateProfileRecord(existingByDiscord.data.id, {
+          const existing = existingByDiscord.data;
+          const usedPreviousDiscordAvatar =
+            Boolean(existing.discord_avatar) &&
+            existing.avatar_url === existing.discord_avatar;
+          const preservedAvatarUrl =
+            !existing.avatar_url || usedPreviousDiscordAvatar
+              ? discordUser.discord_avatar || existing.avatar_url
+              : existing.avatar_url;
+
+          const usedPreviousDecoration =
+            Boolean(existing.discord_avatar_decoration) &&
+            existing.avatar_decoration_url ===
+              existing.discord_avatar_decoration;
+          const preservedDecorationUrl =
+            !existing.avatar_decoration_url || usedPreviousDecoration
+              ? discordUser.discord_avatar_decoration
+              : existing.avatar_decoration_url;
+
+          const updated = await updateProfileRecord(existing.id, {
+            discord_id: discordUser.discord_id,
             discord_username: discordUser.discord_username,
             discord_global_name: discordUser.discord_global_name,
             discord_avatar: discordUser.discord_avatar,
             discord_avatar_decoration: discordUser.discord_avatar_decoration,
-            global_name:
-              existingByDiscord.data.global_name ||
-              discordUser.discord_global_name,
-            avatar_url:
-              discordUser.discord_avatar || existingByDiscord.data.avatar_url,
-            avatar_decoration_url: discordUser.discord_avatar_decoration,
+            global_name: existing.global_name?.trim()
+              ? existing.global_name
+              : discordUser.discord_global_name,
+            avatar_url: preservedAvatarUrl,
+            avatar_decoration_url: preservedDecorationUrl,
           });
-          const synced = updated.data ?? existingByDiscord.data;
+          const synced = updated.data ?? existing;
           setActiveProfile(synced);
           return synced;
         }
@@ -455,6 +492,9 @@ export function AuthProvider({children}: {children: ReactNode}) {
         discord_global_name: discordUser.discord_global_name,
         discord_avatar: discordUser.discord_avatar,
         discord_avatar_decoration: discordUser.discord_avatar_decoration,
+        discord_activity_enabled: true,
+        discord_activity_position: 'profile_card_bottom',
+        discord_activity_z_index: 4500,
         plan: claimedPlan === 'premium' ? 'premium' : 'free',
         badges: claimedPlan === 'premium' ? ['💎 Premium'] : [],
       });

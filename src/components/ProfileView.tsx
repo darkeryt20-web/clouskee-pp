@@ -1,11 +1,13 @@
 import {MouseEvent, useEffect, useMemo, useRef, useState} from 'react';
 import {Eye} from 'lucide-react';
 import {
+  clampDiscordActivityZIndex,
   CustomCursorStyle,
   CustomRoleBadge,
   GlobalNameEffect,
   hasPremiumAccess,
   MusicCardPosition,
+  normalizeDiscordActivityPosition,
   ProfileRecord,
 } from '../lib/supabase';
 import {sanitizeExternalUrl} from '../lib/domain';
@@ -15,6 +17,10 @@ import {
   SocialPresetIcon,
 } from './SocialPresetIcons';
 import {MusicPlayerCard, normalizeMusicPosition} from './MusicPlayerCard';
+import {
+  DiscordActivityCard,
+  parseDiscordActivity,
+} from './DiscordActivityCard';
 import {CustomCursorLayer, useFinePointer} from './CustomCursorLayer';
 import {LightningCursorCanvas} from './LightningCursorCanvas';
 import {SmartBackgroundVideo, SmartImage} from './CloudinaryMedia';
@@ -331,6 +337,20 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   );
   const showVisibleMusicCard = musicCardEnabled && hasMusicMetadata;
 
+  const discordActivityEnabled = profile.discord_activity_enabled === true;
+  const parsedDiscordActivity = useMemo(
+    () => parseDiscordActivity(profile.discord_activity),
+    [profile.discord_activity],
+  );
+  const discordActivityPosition = normalizeDiscordActivityPosition(
+    profile.discord_activity_position,
+  );
+  const discordActivityZIndex = clampDiscordActivityZIndex(
+    profile.discord_activity_z_index,
+  );
+  const showVisibleDiscordActivity =
+    discordActivityEnabled && (parsedDiscordActivity !== null || isPreview);
+
   const customRoles: CustomRoleBadge[] = Array.isArray(profile.custom_roles)
     ? profile.custom_roles
         .map((role) =>
@@ -476,13 +496,30 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
   };
 
   const bgPositionClass = isPreview ? 'absolute inset-0' : 'fixed inset-0';
+  const cornerPositions: Exclude<
+    MusicCardPosition,
+    'profile_card_on' | 'profile_card_bottom'
+  >[] = [
+    'page_top_left',
+    'page_top_right',
+    'page_bottom_left',
+    'page_bottom_right',
+  ];
+
   const isCornerTop =
-    showVisibleMusicCard &&
-    (musicPosition === 'page_top_left' || musicPosition === 'page_top_right');
+    (showVisibleMusicCard &&
+      (musicPosition === 'page_top_left' ||
+        musicPosition === 'page_top_right')) ||
+    (showVisibleDiscordActivity &&
+      (discordActivityPosition === 'page_top_left' ||
+        discordActivityPosition === 'page_top_right'));
   const isCornerBottom =
-    showVisibleMusicCard &&
-    (musicPosition === 'page_bottom_left' ||
-      musicPosition === 'page_bottom_right');
+    (showVisibleMusicCard &&
+      (musicPosition === 'page_bottom_left' ||
+        musicPosition === 'page_bottom_right')) ||
+    (showVisibleDiscordActivity &&
+      (discordActivityPosition === 'page_bottom_left' ||
+        discordActivityPosition === 'page_bottom_right'));
 
   const cornerPlacementClass: Record<
     Exclude<MusicCardPosition, 'profile_card_on' | 'profile_card_bottom'>,
@@ -521,6 +558,20 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
     );
   };
 
+  const renderDiscordActivityCard = (extraClass = '') => {
+    if (!showVisibleDiscordActivity) return null;
+    return (
+      <DiscordActivityCard
+        profile={profile}
+        accentColor={accentColor}
+        cardOpacity={cardOpacity}
+        cardBlur={cardBlur}
+        isPreview={isPreview}
+        className={extraClass}
+      />
+    );
+  };
+
   return (
     <div
       ref={containerRef}
@@ -528,7 +579,7 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
       onMouseLeave={handleMouseLeave}
       className={`${
         isPreview
-          ? `relative min-h-[600px] rounded-b-2xl overflow-hidden px-4 ${
+          ? `isolate relative min-h-[600px] rounded-b-2xl overflow-hidden px-4 ${
               isCornerTop ? 'pt-24' : 'py-8'
             } ${isCornerBottom ? 'pb-24' : 'py-8'}`
           : `relative min-h-screen overflow-hidden px-4 sm:px-6 ${
@@ -597,20 +648,28 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
         />
       )}
 
-      {/* Page-Corner Music Card Positions */}
-      {showVisibleMusicCard &&
-        musicPosition !== 'profile_card_on' &&
-        musicPosition !== 'profile_card_bottom' && (
+      {/* Page-Corner Music Card & Discord Activity Card Positions */}
+      {cornerPositions.map((corner) => {
+        const hasMusicHere = showVisibleMusicCard && musicPosition === corner;
+        const hasDiscordHere =
+          showVisibleDiscordActivity && discordActivityPosition === corner;
+        if (!hasMusicHere && !hasDiscordHere) return null;
+
+        return (
           <div
-            className={`${cornerPlacementClass[musicPosition]} z-30 ${
+            key={corner}
+            style={{zIndex: hasDiscordHere ? discordActivityZIndex : 30}}
+            className={`${cornerPlacementClass[corner]} flex flex-col gap-2.5 ${
               isPreview
                 ? 'w-[245px] max-w-[calc(100%-1.5rem)]'
                 : 'w-[calc(100vw-2rem)] sm:w-80'
             }`}
           >
-            {renderMusicCard()}
+            {hasMusicHere && renderMusicCard()}
+            {hasDiscordHere && renderDiscordActivityCard()}
           </div>
-        )}
+        );
+      })}
 
       {/* Main Profile Container + Optional Separate Card Directly Below */}
       <div
@@ -759,6 +818,14 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
           {/* Music Card Position: profile_card_on (Embedded Inside Profile Card) */}
           {musicPosition === 'profile_card_on' && renderMusicCard('mt-6')}
 
+          {/* Discord Activity Position: profile_card_on (Embedded Inside Profile Card) */}
+          {discordActivityPosition === 'profile_card_on' &&
+            renderDiscordActivityCard(
+              showVisibleMusicCard && musicPosition === 'profile_card_on'
+                ? 'mt-3'
+                : 'mt-6',
+            )}
+
           {/* Views Count at Bottom-Left of Profile Card */}
           {showViewsCount && (
             <div className="mt-6 flex items-center justify-start">
@@ -772,6 +839,14 @@ export function ProfileView({profile, isPreview = false}: ProfileViewProps) {
 
         {/* Music Card Position: profile_card_bottom (Separate Standalone Card Below Profile Card) */}
         {musicPosition === 'profile_card_bottom' && renderMusicCard('mt-4')}
+
+        {/* Discord Activity Position: profile_card_bottom (Separate Standalone Card Below Profile Card) */}
+        {discordActivityPosition === 'profile_card_bottom' &&
+          renderDiscordActivityCard(
+            showVisibleMusicCard && musicPosition === 'profile_card_bottom'
+              ? 'mt-3'
+              : 'mt-4',
+          )}
       </div>
 
       {/* Full-Screen "Click to Enter" Normal Plain Text Overlay (Public Profile Only) */}

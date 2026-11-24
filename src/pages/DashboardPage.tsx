@@ -34,10 +34,15 @@ import {
 import {useAuth} from '../context/AuthContext';
 import {auth} from '../lib/firebase';
 import {
+  clampDiscordActivityZIndex,
   CustomCursorStyle,
+  DISCORD_ACTIVITY_Z_DEFAULT,
+  DISCORD_ACTIVITY_Z_MAX,
+  DISCORD_ACTIVITY_Z_MIN,
   GlobalNameEffect,
   hasPremiumAccess,
   MusicCardPosition,
+  normalizeDiscordActivityPosition,
   PageTitleMode,
   ProfileLinkItem,
   ProfileRecord,
@@ -61,6 +66,10 @@ import {
   MUSIC_STYLES,
   normalizeMusicPosition,
 } from '../components/MusicPlayerCard';
+import {
+  DISCORD_ACTIVITY_POSITIONS,
+  parseDiscordActivity,
+} from '../components/DiscordActivityCard';
 import {CURSOR_STYLES} from '../components/CustomCursorLayer';
 import {
   getPresetMeta,
@@ -78,6 +87,7 @@ type DashboardTab =
   | 'appearance'
   | 'audio'
   | 'links'
+  | 'discord'
   | 'connections';
 
 function GoogleBadgeIcon() {
@@ -112,6 +122,7 @@ const TABS: {id: DashboardTab; label: string; icon: typeof User}[] = [
   {id: 'appearance', label: 'Appearance', icon: Palette},
   {id: 'audio', label: 'Audio', icon: Music},
   {id: 'links', label: 'Links', icon: Link2},
+  {id: 'discord', label: 'Discord', icon: MessageCircle},
   {id: 'connections', label: 'Connections', icon: ShieldCheck},
 ];
 
@@ -206,6 +217,14 @@ export function DashboardPage() {
 
   // Links state
   const [links, setLinks] = useState<ProfileLinkItem[]>([]);
+
+  // Discord Activity state
+  const [discordActivityEnabled, setDiscordActivityEnabled] = useState(false);
+  const [discordActivityPosition, setDiscordActivityPosition] =
+    useState<MusicCardPosition>('profile_card_bottom');
+  const [discordActivityZIndex, setDiscordActivityZIndex] = useState<number>(
+    DISCORD_ACTIVITY_Z_DEFAULT,
+  );
 
   // UI feedback states
   const [uploadingField, setUploadingField] = useState<
@@ -326,6 +345,14 @@ export function DashboardPage() {
             preset: inferPresetFromLink(item),
           }))
         : [],
+    );
+
+    setDiscordActivityEnabled(activeProfile.discord_activity_enabled === true);
+    setDiscordActivityPosition(
+      normalizeDiscordActivityPosition(activeProfile.discord_activity_position),
+    );
+    setDiscordActivityZIndex(
+      clampDiscordActivityZIndex(activeProfile.discord_activity_z_index),
     );
   }, [activeProfile]);
 
@@ -466,6 +493,11 @@ export function DashboardPage() {
       music_show_controls: musicShowControls,
       music_show_title: musicShowTitle,
       music_show_artist: musicShowArtist,
+      discord_activity_enabled: discordActivityEnabled,
+      discord_activity_position: discordActivityPosition,
+      discord_activity_z_index: clampDiscordActivityZIndex(
+        discordActivityZIndex,
+      ),
       links,
     };
   }, [
@@ -517,6 +549,9 @@ export function DashboardPage() {
     musicShowControls,
     musicShowTitle,
     musicShowArtist,
+    discordActivityEnabled,
+    discordActivityPosition,
+    discordActivityZIndex,
     links,
   ]);
 
@@ -970,6 +1005,11 @@ export function DashboardPage() {
         music_show_controls: musicShowControls,
         music_show_title: musicShowTitle,
         music_show_artist: musicShowArtist,
+        discord_activity_enabled: discordActivityEnabled,
+        discord_activity_position: discordActivityPosition,
+        discord_activity_z_index: clampDiscordActivityZIndex(
+          discordActivityZIndex,
+        ),
         links: sanitizedLinks,
       });
       setSaveMessage('All profile changes saved and published.');
@@ -986,6 +1026,10 @@ export function DashboardPage() {
     activeProfile.firebase_uid || firebaseUser?.uid,
   );
   const hasDiscordLinked = Boolean(activeProfile.discord_id);
+  const liveBotActivity = useMemo(
+    () => parseDiscordActivity(activeProfile.discord_activity),
+    [activeProfile.discord_activity],
+  );
   const isUsernameDirty =
     sanitizeHandle(draftUsername) !== activeProfile.username.toLowerCase();
 
@@ -2886,7 +2930,221 @@ export function DashboardPage() {
                 </div>
               )}
 
-              {/* TAB 5: CONNECTIONS (GOOGLE & DISCORD) */}
+              {/* TAB 5: DISCORD ACTIVITY */}
+              {activeTab === 'discord' && (
+                <div className="space-y-5">
+                  {/* Discord Link Status & Saved Discord ID */}
+                  <div className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 text-indigo-300">
+                        <MessageCircle className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-bold text-white">
+                            Discord Presence Sync
+                          </h3>
+                          {hasDiscordLinked ? (
+                            <span className="rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                              ID Saved
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                              Link Required
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {hasDiscordLinked ? (
+                            <>
+                              Discord ID{' '}
+                              <span className="font-mono text-indigo-300">
+                                {activeProfile.discord_id}
+                              </span>{' '}
+                              is saved for live bot activity syncing.
+                            </>
+                          ) : (
+                            'Link your Discord account so your Discord ID is saved and the Clouskee bot can sync your live activity.'
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSyncDiscord}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#4f46e5]/90 hover:bg-[#4f46e5] border border-indigo-400/35 px-4 py-2.5 text-xs font-semibold text-white shrink-0 transition-colors cursor-pointer"
+                    >
+                      {hasDiscordLinked ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Re-Sync Discord</span>
+                        </>
+                      ) : (
+                        <>
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Link Discord</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Show / Hide Discord Activity Toggle */}
+                  <div className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-white">
+                        Show Discord Activity
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        Only appears on your public profile when an active
+                        Discord activity is synced (never shows Idle or
+                        Offline).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={discordActivityEnabled}
+                      onClick={() =>
+                        setDiscordActivityEnabled((prev) => !prev)
+                      }
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 cursor-pointer ${
+                        discordActivityEnabled
+                          ? 'bg-purple-600'
+                          : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                          discordActivityEnabled
+                            ? 'translate-x-6'
+                            : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Bot Activity Sync Status Indicator */}
+                  <div className="rounded-xl bg-[#07030d]/70 border border-purple-500/15 px-4 py-3 flex items-center justify-between gap-3">
+                    <span className="text-xs text-slate-300 font-medium">
+                      Current Synced Activity
+                    </span>
+                    {liveBotActivity ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 truncate max-w-[60%]">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        <span className="truncate">
+                          {liveBotActivity.verb} {liveBotActivity.name}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">
+                        No active activity synced yet (hidden on public page)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Position Selector */}
+                  <div className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-4 space-y-3">
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-white">
+                        Activity Card Position
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        Choose where your Discord Activity card renders on your
+                        profile page.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {DISCORD_ACTIVITY_POSITIONS.map((pos) => {
+                        const selected = discordActivityPosition === pos.id;
+                        return (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() => setDiscordActivityPosition(pos.id)}
+                            className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-all cursor-pointer ${
+                              selected
+                                ? 'bg-purple-600/25 border-purple-400 text-white shadow-[0_0_16px_rgba(139,92,246,0.25)]'
+                                : 'bg-[#0b0615] border-purple-500/20 text-slate-300 hover:border-purple-400/50 hover:text-white'
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Z-Index / Layer Control (4000 - 5000) */}
+                  <div className="rounded-xl bg-[#07030d]/85 border border-purple-500/20 p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <label
+                          htmlFor="dash-discord-zindex-input"
+                          className="text-xs sm:text-sm font-bold text-white"
+                        >
+                          Layer Priority (Z-Index: 4000 – 5000)
+                        </label>
+                        <p className="mt-0.5 text-[11px] text-slate-400">
+                          Controls stacking order between {DISCORD_ACTIVITY_Z_MIN}{' '}
+                          and {DISCORD_ACTIVITY_Z_MAX}.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <input
+                          id="dash-discord-zindex-input"
+                          type="number"
+                          min={DISCORD_ACTIVITY_Z_MIN}
+                          max={DISCORD_ACTIVITY_Z_MAX}
+                          step={1}
+                          value={discordActivityZIndex}
+                          onChange={(e) => {
+                            const raw = Number(e.target.value);
+                            if (Number.isFinite(raw)) {
+                              setDiscordActivityZIndex(raw);
+                            }
+                          }}
+                          onBlur={() =>
+                            setDiscordActivityZIndex((prev) =>
+                              clampDiscordActivityZIndex(prev),
+                            )
+                          }
+                          className="w-24 rounded-lg bg-[#0b0615] border border-purple-500/30 focus:border-purple-400 px-2.5 py-1.5 text-right font-mono text-xs font-semibold text-white tabular-nums focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <input
+                        aria-label="Discord Activity Z-Index slider"
+                        type="range"
+                        min={DISCORD_ACTIVITY_Z_MIN}
+                        max={DISCORD_ACTIVITY_Z_MAX}
+                        step={10}
+                        value={clampDiscordActivityZIndex(
+                          discordActivityZIndex,
+                        )}
+                        onChange={(e) =>
+                          setDiscordActivityZIndex(
+                            clampDiscordActivityZIndex(Number(e.target.value)),
+                          )
+                        }
+                        className="w-full accent-purple-500 cursor-pointer"
+                      />
+                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 tabular-nums">
+                        <span>{DISCORD_ACTIVITY_Z_MIN} (Base Layer)</span>
+                        <span className="text-purple-300 font-semibold">
+                          z-{clampDiscordActivityZIndex(discordActivityZIndex)}
+                        </span>
+                        <span>{DISCORD_ACTIVITY_Z_MAX} (Top Layer)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: CONNECTIONS (GOOGLE & DISCORD) */}
               {activeTab === 'connections' && (
                 <div className="space-y-4">
                   {/* Google Connection */}
@@ -2969,34 +3227,47 @@ export function DashboardPage() {
                                 @
                                 {activeProfile.discord_username ||
                                   activeProfile.discord_global_name}
+                              </span>{' '}
+                              (ID:{' '}
+                              <span className="font-mono text-indigo-300">
+                                {activeProfile.discord_id}
                               </span>
-                              . Re-sync anytime to pull your latest Nitro avatar
-                              &amp; decoration.
+                              ). Re-sync anytime without losing custom edits.
                             </>
                           ) : (
-                            'Link Discord OAuth2 to attach your Discord identity, animated avatar, and Nitro decoration.'
+                            'Link Discord OAuth2 to save your Discord ID, identity, animated avatar, and Nitro decoration.'
                           )}
                         </p>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleSyncDiscord}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#4f46e5]/90 hover:bg-[#4f46e5] border border-indigo-400/35 px-4 py-2.5 text-xs font-semibold text-white shrink-0 transition-colors cursor-pointer"
-                    >
-                      {hasDiscordLinked ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          <span>Re-Sync Discord</span>
-                        </>
-                      ) : (
-                        <>
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>Link Discord</span>
-                        </>
-                      )}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('discord')}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#160b29] hover:bg-[#1f1038] border border-purple-500/30 px-3.5 py-2.5 text-xs font-semibold text-purple-200 transition-colors cursor-pointer"
+                      >
+                        <span>Activity Settings</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSyncDiscord}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#4f46e5]/90 hover:bg-[#4f46e5] border border-indigo-400/35 px-4 py-2.5 text-xs font-semibold text-white transition-colors cursor-pointer"
+                      >
+                        {hasDiscordLinked ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Re-Sync Discord</span>
+                          </>
+                        ) : (
+                          <>
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>Link Discord</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
